@@ -57,6 +57,7 @@ I18N = {
     "EN": {
         "settings": "⚙️ SETTINGS",
         "atingiu": "<-- REACHED THE CAP!",
+        "cap_list_title": " 🏁 REACHED THE CAP:",
         "quase": " ⏳ ALMOST THERE (Missing 1 Level):",
         "modo_auto": "Automatic Mode",
         "modo_manual": "Manual Mode (Ignore auto-save)",
@@ -85,6 +86,9 @@ I18N = {
         "summary_alerts": " digimon(s) reached the Maximum limit",
         "summary_almost": " digimon(s) need 1 more level to reach the Maximum limit",
         "summary_lv99": " digimon(s) are at level 99",
+        "summary_protected": " digimon(s) are protected (locked)",
+        "protected_list_title": " 🔒 PROTECTED DIGIMONS:",
+        "btn_show_protected": "Click to see protected digimons",
         "btn_hide_details": "Hide details",
         "btn_show_lv99": "Click to see the Level 99 digimons",
         "btn_show_almost": "Click to see who's almost there",
@@ -101,6 +105,7 @@ I18N = {
         "wishlist_panel_title": "🎯 WISHLIST / TARGET TRACKER",
         "wishlist_search_label": "Search:",
         "wishlist_search_btn": "🔍 Search",
+        "wishlist_choose_label": "Choose:",
         "wishlist_target_label": "Target Lv:",
         "wishlist_add_btn": "➕ Add Target",
         "msg_warning_title": "Warning",
@@ -122,6 +127,7 @@ I18N = {
     "PT": {
         "settings": "⚙️ CONFIGURAÇÕES",
         "atingiu": "<-- ATINGIU O LIMITE!",
+        "cap_list_title": " 🏁 CHEGOU NO CAP:",
         "quase": " ⏳ QUASE LÁ (Faltando 1 Level):",
         "modo_auto": "Modo Automático",
         "modo_manual": "Modo Manual (Ignora o Auto-Save)",
@@ -150,6 +156,9 @@ I18N = {
         "summary_alerts": " digimon(s) atingiram o limite Máximo",
         "summary_almost": " digimon(s) falta 1 level para o limite Máximo",
         "summary_lv99": " digimon(s) estão no level 99",
+        "summary_protected": " digimon(s) estão protegidos (cadeado)",
+        "protected_list_title": " 🔒 DIGIMONS PROTEGIDOS:",
+        "btn_show_protected": "Clique para ver os digimons protegidos",
         "btn_hide_details": "Ocultar detalhes",
         "btn_show_lv99": "Clique para ver os digimons no Nv. 99",
         "btn_show_almost": "Clique para ver quem está quase lá",
@@ -166,6 +175,7 @@ I18N = {
         "wishlist_panel_title": "🎯 WISHLIST / META TRACKER",
         "wishlist_search_label": "Busca:",
         "wishlist_search_btn": "🔍 Buscar",
+        "wishlist_choose_label": "Escolha:",
         "wishlist_target_label": "Nível Alvo:",
         "wishlist_add_btn": "➕ Add Meta",
         "msg_warning_title": "Aviso",
@@ -225,6 +235,10 @@ class DigimonMonitorApp:
         self.show_almost = self.config_data.get("show_almost", False)
         self.show_lv99 = self.config_data.get("show_lv99", False)
         self.show_wishlist = self.config_data.get("show_wishlist", False)
+        self.show_protected = self.config_data.get("show_protected", False)
+
+        # Ordem das listas reordenáveis (2, 3, 4, 5). A 1ª lista (Level Cap) é sempre fixa.
+        self.list_order = self.config_data.get("list_order", ["almost", "lv99", "wishlist", "protected"])
 
         if "geometry" in self.config_data:
             self.root.geometry(self.config_data["geometry"])
@@ -259,6 +273,8 @@ class DigimonMonitorApp:
         self.config_data["show_almost"] = getattr(self, 'show_almost', False)
         self.config_data["show_lv99"] = getattr(self, 'show_lv99', False)
         self.config_data["show_wishlist"] = getattr(self, 'show_wishlist', False)
+        self.config_data["show_protected"] = getattr(self, 'show_protected', False)
+        self.config_data["list_order"] = self.get_normalized_list_order()
         try:
             with open(CONFIG_FILE, "w") as f:
                 json.dump(self.config_data, f, indent=4)
@@ -268,6 +284,34 @@ class DigimonMonitorApp:
     def on_closing(self):
         self.save_config()
         self.root.destroy()
+
+    def get_normalized_list_order(self):
+        """Garante que self.list_order sempre contenha exatamente as 4 chaves válidas
+        (almost, lv99, wishlist, protected), preservando a ordem já salva e anexando
+        no final qualquer chave nova que ainda não existisse (ex: quando esta lista
+        de Protegidos foi adicionada em uma versão mais nova do programa)."""
+        valid_keys = ["almost", "lv99", "wishlist", "protected"]
+        current = getattr(self, 'list_order', None) or []
+        normalized = [k for k in current if k in valid_keys]
+        for k in valid_keys:
+            if k not in normalized:
+                normalized.append(k)
+        self.list_order = normalized
+        return normalized
+
+    def move_list_order(self, key, direction):
+        """Move uma lista reordenável (2ª a 5ª) uma posição pra cima (-1) ou pra baixo (+1)."""
+        order = self.get_normalized_list_order()
+        if key not in order:
+            return
+        idx = order.index(key)
+        new_idx = idx + direction
+        if 0 <= new_idx < len(order):
+            order[idx], order[new_idx] = order[new_idx], order[idx]
+            self.list_order = order
+            self.save_config()
+            if hasattr(self, '_current_filepath') and os.path.exists(self._current_filepath):
+                self.process_save(self._current_filepath, self._current_filename)
 
     def change_directory(self):
         t = I18N[self.lang]
@@ -299,9 +343,11 @@ class DigimonMonitorApp:
         self.btn_resume.config(text=t["btn_resume"])
         self.lbl_wishlist_title.config(text=t["wishlist_panel_title"])
         self.lbl_wishlist_search.config(text=t["wishlist_search_label"])
+        self.lbl_wishlist_choose.config(text=t["wishlist_choose_label"])
         self.btn_wish_search.config(text=t["wishlist_search_btn"])
         self.lbl_wishlist_target.config(text=t["wishlist_target_label"])
         self.btn_wish_add.config(text=t["wishlist_add_btn"])
+        self.lbl_summary_title.config(text=t["lbl_summary"])
 
         if hasattr(self, "_current_filepath") and os.path.exists(self._current_filepath):
             self.process_save(self._current_filepath, self._current_filename)
@@ -310,7 +356,7 @@ class DigimonMonitorApp:
         main_frame = tk.Frame(self.root, bg=BG_COLOR)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        control_frame = tk.Frame(main_frame, bg=PANEL_BG, width=350)
+        control_frame = tk.Frame(main_frame, bg=PANEL_BG, width=430)
         control_frame.pack(side=tk.RIGHT, fill=tk.Y)
         control_frame.pack_propagate(False) 
 
@@ -353,6 +399,13 @@ class DigimonMonitorApp:
         self.save_combo.bind("<<ComboboxSelected>>", self.on_combo_select)
         self.save_combo.bind("<Button-1>", self.update_combo_list)
 
+        self.pause_frame = tk.Frame(control_frame, bg=PANEL_BG)
+        self.pause_frame.pack(pady=15, fill=tk.X, padx=15)
+        
+        self.lbl_paused = tk.Label(self.pause_frame, text=I18N[self.lang]["lbl_paused"], bg=PANEL_BG, fg="yellow", font=("Consolas", 12, "bold"))
+        self.btn_resume = tk.Button(self.pause_frame, text=I18N[self.lang]["btn_resume"], command=self.resume_tracking, 
+                                    bg="#8B0000", fg="white", font=("Consolas", 10, "bold"), relief=tk.FLAT)
+
         # ==========================================
         # PAINEL DA WISHLIST (NA BARRA LATERAL)
         # ==========================================
@@ -372,15 +425,24 @@ class DigimonMonitorApp:
         self.entry_wish_id.bind("<Return>", lambda event: self.search_wishlist_digimon())
 
         self.btn_wish_search = tk.Button(control_frame, text=I18N[self.lang]["wishlist_search_btn"], command=self.search_wishlist_digimon, bg="#555555", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2")
-        self.btn_wish_search.pack(fill='x', padx=15, pady=(0, 6), ipady=2)
+        self.btn_wish_search.pack(fill='y', padx=15, pady=(5, 6), ipady=2)
 
+        choose_header = tk.Frame(control_frame, bg=PANEL_BG)
+        choose_header.pack(fill='x', padx=15, pady=(30, 2))
+
+        self.lbl_wishlist_choose = tk.Label(choose_header, text=I18N[self.lang]["wishlist_choose_label"], bg=PANEL_BG, fg="white", font=("Consolas", 9))
+        self.lbl_wishlist_choose.pack(side=tk.LEFT)
+
+        self.lbl_wishlist_result_count = tk.Label(choose_header, text="", bg=PANEL_BG, fg="#BBBBBB", font=("Consolas", 9))
+        self.lbl_wishlist_result_count.pack(side=tk.RIGHT)
+        
         # 2. Combobox de Resultados Encontrados
-        self.combo_wish_results = ttk.Combobox(control_frame, state="readonly", font=("Consolas", 9))
+        self.combo_wish_results = ttk.Combobox(control_frame, state="readonly", font=("Consolas", 9), width=58)
         self.combo_wish_results.pack(fill='x', padx=15, pady=(0, 6))
 
         # 3. Target Level + Botão Adicionar (lado a lado, já que o campo é só um número de 2 dígitos)
         target_frame = tk.Frame(control_frame, bg=PANEL_BG)
-        target_frame.pack(fill='x', padx=15, pady=(0, 10))
+        target_frame.pack(fill='x', padx=15, pady=(30, 10))
 
         self.lbl_wishlist_target = tk.Label(target_frame, text=I18N[self.lang]["wishlist_target_label"], bg=PANEL_BG, fg="white", font=("Consolas", 9))
         self.lbl_wishlist_target.pack(side=tk.LEFT)
@@ -399,12 +461,41 @@ class DigimonMonitorApp:
         self.btn_wish_add.pack(side=tk.LEFT, fill='x', expand=True, ipady=2)
         # ==========================================
 
-        self.pause_frame = tk.Frame(control_frame, bg=PANEL_BG)
-        self.pause_frame.pack(pady=15, fill=tk.X, padx=15)
-        
-        self.lbl_paused = tk.Label(self.pause_frame, text=I18N[self.lang]["lbl_paused"], bg=PANEL_BG, fg="yellow", font=("Consolas", 12, "bold"))
-        self.btn_resume = tk.Button(self.pause_frame, text=I18N[self.lang]["btn_resume"], command=self.resume_tracking, 
-                                    bg="#8B0000", fg="white", font=("Consolas", 10, "bold"), relief=tk.FLAT)
+        # ==========================================
+        # PAINEL DE RESUMO (NA BARRA LATERAL)
+        # ==========================================
+        ttk.Separator(control_frame, orient='horizontal').pack(fill='x', pady=(15, 8), padx=15)
+
+        self.lbl_summary_title = tk.Label(control_frame, text=I18N[self.lang]["lbl_summary"], bg=PANEL_BG, fg="white", font=("Consolas", 10, "bold"))
+        self.lbl_summary_title.pack(pady=(0, 6))
+
+        self.summary_text = tk.Text(control_frame, bg=BG_COLOR, font=("Consolas", 9),
+                                     wrap=tk.WORD, state=tk.DISABLED, bd=0, height=6,
+                                     padx=8, pady=6)
+        self.summary_text.pack(fill='x', padx=15, pady=(0, 10))
+
+        self.summary_text.tag_config("alert", foreground=FG_ALERT, font=("Consolas", 9, "bold"))
+        self.summary_text.tag_config("almost", foreground=FG_ALMOST)
+        self.summary_text.tag_config("status", foreground="white")
+        self.summary_text.tag_config("loc_fazenda", foreground="#32CD32")
+
+        # ------------------------------------------
+        # Painel de ocupação (Box / Fazenda), separado, com fonte maior
+        # ------------------------------------------
+        ttk.Separator(control_frame, orient='horizontal').pack(fill='x', pady=(0, 8), padx=15)
+
+        occupancy_frame = tk.Frame(control_frame, bg=PANEL_BG)
+        occupancy_frame.pack(fill='x', padx=15, pady=(0, 10))
+
+        self.lbl_party_count = tk.Label(occupancy_frame, text="PARTY: -/6", bg=PANEL_BG, fg="#FFA500", font=("Consolas", 13, "bold"))
+        self.lbl_party_count.pack(side=tk.LEFT, padx=(0, 12))
+
+        self.lbl_box_count = tk.Label(occupancy_frame, text="BOX: -/999", bg=PANEL_BG, fg="#1E90FF", font=("Consolas", 13, "bold"))
+        self.lbl_box_count.pack(side=tk.LEFT, padx=(0, 12))
+
+        self.lbl_farm_count = tk.Label(occupancy_frame, text="FAZENDA: -/30", bg=PANEL_BG, fg="#32CD32", font=("Consolas", 13, "bold"))
+        self.lbl_farm_count.pack(side=tk.LEFT)
+        # ==========================================
 
         log_frame = tk.Frame(main_frame, bg=BG_COLOR)
         log_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -422,6 +513,8 @@ class DigimonMonitorApp:
         self.text_area.tag_config("alert", foreground=FG_ALERT, font=("Consolas", 11, "bold"))
         self.text_area.tag_config("almost", foreground=FG_ALMOST)
         self.text_area.tag_config("header", foreground="#00BFFF", font=("Consolas", 12, "bold"))
+        self.text_area.tag_config("header_red", foreground="#FF4D4D", font=("Consolas", 12, "bold"))
+        self.text_area.tag_config("header_orange", foreground="#FFA500", font=("Consolas", 12, "bold"))
         self.text_area.tag_config("status", foreground="white")
         self.text_area.tag_config("loc_party", foreground="#FFA500") 
         self.text_area.tag_config("loc_box", foreground="#1E90FF")   
@@ -432,6 +525,36 @@ class DigimonMonitorApp:
         if proposed_value == "":
             return True
         return proposed_value.isdigit() and len(proposed_value) <= 2
+
+    def read_digimon_uid(self, data, name_offset):
+        """UID do individuo no mesmo formato visto no HxD, relativo ao inicio do nome."""
+        uid_start = name_offset - 0x08
+        uid_end = name_offset - 0x04
+        if uid_start < 0 or uid_end > len(data):
+            return ""
+        return data[uid_start:uid_end].hex().upper()
+
+    def read_digimon_protected(self, data, name_offset):
+        """Lê o status de proteção (cadeado) do Digimon. Offset achado via Cheat Engine:
+        Protection = Talent (name_offset + 0x100) + 0x1C = name_offset + 0x11C.
+        1 = protegido, 0 = desprotegido."""
+        offset = name_offset + 0x11C
+        if offset + 4 > len(data):
+            return False
+        return struct.unpack_from("<I", data, offset)[0] == 1
+
+    def get_level_exp_display(self, digimon_id, level, current_exp):
+        level_exp, next_level_exp = self.get_level_exp_progress(digimon_id, level, current_exp)
+        if next_level_exp <= 0:
+            return "MAX"
+        return f"{level_exp}/{next_level_exp}"
+
+    def get_level_exp_progress(self, digimon_id, level, current_exp):
+        exp_base = get_exp_needed(digimon_id, level)
+        exp_next = get_exp_needed(digimon_id, level + 1)
+        if level >= 99 or exp_next <= exp_base:
+            return 0, 0
+        return max(0, current_exp - exp_base), exp_next - exp_base
 
     def search_wishlist_digimon(self):
         """Busca o Digimon pelo ID ou pelo Nome no save atualmente ativo."""
@@ -478,15 +601,19 @@ class DigimonMonitorApp:
                 name = name_bytes.decode('ascii', errors='ignore')
 
                 if match_criteria(d_id, name):
+                    uid = self.read_digimon_uid(data, name_offset)
                     level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
                     exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                     talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                     talent = talent_raw // 1000 if talent_raw >= 1000 else 1
                     if talent > 99: talent = 99
+                    protected = self.read_digimon_protected(data, name_offset)
                     
-                    info = {'id': d_id, 'name': name, 'loc': 'FAZENDA', 'slot': i, 'level': level, 'exp': exp, 'talent': talent}
+                    info = {'uid': uid, 'id': d_id, 'name': name, 'loc': 'FAZENDA', 'slot': i, 'level': level, 'exp': exp, 'talent': talent, 'protected': protected}
                     self.search_results_map.append(info)
-                    combo_options.append(f"{name} [{loc_lbl['FAZENDA']}] - {t['lvl_abbr']}{level} ({t['limite_abbr']}: {talent})".replace(",", "."))
+                    exp_str = self.get_level_exp_display(d_id, level, exp)
+                    lock_icon = " 🔒" if protected else ""
+                    combo_options.append(f"{name}{lock_icon} [{loc_lbl['FAZENDA']}] - {t['lvl_abbr']}{level}/{talent} | EXP {exp_str} | Ref {uid}")
 
         # 2. Busca na Party e Box
         regions = [("PARTY", 0x12C8 - 0x10, 0x10, 6), ("BOX", 0x1AA8 - 0x10, 0x10, 999)]
@@ -504,22 +631,40 @@ class DigimonMonitorApp:
                     name = name_bytes.decode('ascii', errors='ignore')
 
                     if match_criteria(d_id, name):
+                        uid = self.read_digimon_uid(data, name_offset)
                         level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
                         exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                         talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                         talent = talent_raw // 1000 if talent_raw >= 1000 else 1
                         if talent > 99: talent = 99
+                        protected = self.read_digimon_protected(data, name_offset)
                         
-                        info = {'id': d_id, 'name': name, 'loc': loc, 'slot': i, 'level': level, 'exp': exp, 'talent': talent}
+                        info = {'uid': uid, 'id': d_id, 'name': name, 'loc': loc, 'slot': i, 'level': level, 'exp': exp, 'talent': talent, 'protected': protected}
                         self.search_results_map.append(info)
-                        combo_options.append(f"{name} [{loc_lbl[loc]}] - {t['lvl_abbr']}{level} ({t['limite_abbr']}: {talent})".replace(",", "."))
+                        exp_str = self.get_level_exp_display(d_id, level, exp)
+                        lock_icon = " 🔒" if protected else ""
+                        combo_options.append(f"{name}{lock_icon} [{loc_lbl[loc]}] - {t['lvl_abbr']}{level}/{talent} | EXP {exp_str} | Ref {uid}")
 
-        if combo_options:
+        if self.search_results_map:
+            def sort_wishlist_result(info):
+                level_exp, _ = self.get_level_exp_progress(info['id'], info['level'], info['exp'])
+                return (info['level'], level_exp, info['talent'])
+
+            self.search_results_map.sort(key=sort_wishlist_result, reverse=True)
+            combo_options = []
+            for info in self.search_results_map:
+                exp_str = self.get_level_exp_display(info['id'], info['level'], info['exp'])
+                lock_icon = " 🔒" if info.get('protected') else ""
+                combo_options.append(f"{info['name']}{lock_icon} [{loc_lbl[info['loc']]}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
+
             self.combo_wish_results['values'] = combo_options
             self.combo_wish_results.current(0)
+            result_word = "resultado" if len(combo_options) == 1 else "resultados"
+            self.lbl_wishlist_result_count.config(text=f"{len(combo_options)} {result_word}")
         else:
             self.combo_wish_results['values'] = []
             self.combo_wish_results.set("")
+            self.lbl_wishlist_result_count.config(text="0 resultados")
             messagebox.showinfo(t["msg_search_title"], t["wishlist_no_results"].format(query=query_text))
 
     def add_wishlist_target(self):
@@ -549,6 +694,7 @@ class DigimonMonitorApp:
             return
 
         item = {
+            'uid': selected_info['uid'],
             'id': selected_info['id'],
             'name': selected_info['name'],
             'loc': selected_info['loc'],
@@ -561,6 +707,7 @@ class DigimonMonitorApp:
 
         self.combo_wish_results.set("")
         self.combo_wish_results['values'] = []
+        self.lbl_wishlist_result_count.config(text="")
         self.entry_wish_target.delete(0, tk.END)
         self.entry_wish_id.delete(0, tk.END)
 
@@ -585,17 +732,24 @@ class DigimonMonitorApp:
         active = getattr(self, 'active_digimons', {})
 
         found = None
-        key = (item.get('loc'), item.get('slot'))
-        if key in active and active[key]['id'] == item['id']:
-            found = active[key]
-        else:
+        item_uid = item.get('uid')
+        if item_uid:
             for candidate in active.values():
-                if candidate['id'] == item['id'] and candidate['name'] == item['name']:
+                if candidate.get('uid') == item_uid and candidate['id'] == item['id'] and candidate['name'] == item['name']:
                     found = candidate
                     break
+        else:
+            key = (item.get('loc'), item.get('slot'))
+            if key in active and active[key]['id'] == item['id'] and active[key]['name'] == item['name']:
+                found = active[key]
+            else:
+                candidates = [candidate for candidate in active.values() if candidate['id'] == item['id'] and candidate['name'] == item['name']]
+                if len(candidates) == 1:
+                    found = candidates[0]
 
         if found:
             item['orphaned'] = False
+            item['uid'] = found.get('uid', item.get('uid', ''))
             item['loc'] = found['loc']
             item['slot'] = found['slot']
             self.save_config()
@@ -613,16 +767,39 @@ class DigimonMonitorApp:
                     available_saves.append(filename)
         self.save_combo['values'] = available_saves
 
-    def log(self, text, tag=None):
-        self.text_area.config(state=tk.NORMAL)
+    def log(self, text, tag=None, widget=None):
+        target = widget if widget is not None else self.text_area
+        target.config(state=tk.NORMAL)
         if isinstance(text, list):
             for pedaco, t in text:
-                self.text_area.insert(tk.END, pedaco, t)
-            self.text_area.insert(tk.END, "\n")
+                target.insert(tk.END, pedaco, t)
+            target.insert(tk.END, "\n")
         else:
-            self.text_area.insert(tk.END, text + "\n", tag)
-        self.text_area.config(state=tk.DISABLED)
-        self.text_area.yview(1.0)
+            target.insert(tk.END, text + "\n", tag)
+        target.config(state=tk.DISABLED)
+        target.yview(1.0)
+
+    def update_summary_panel(self, count_party, count_box, count_farm, total_alerts, total_almost, total_lv99, total_protected, t, loc_lbl):
+        """Preenche o painel de Resumo na barra lateral: ocupação de Party/Box/Fazenda (labels grandes) + resumo de pendências (texto)."""
+        self.lbl_party_count.config(text=f"{loc_lbl['PARTY']}: {count_party}/6")
+        self.lbl_box_count.config(text=f"{loc_lbl['BOX']}: {count_box}/999")
+        self.lbl_farm_count.config(text=f"{loc_lbl['FAZENDA']}: {count_farm}/30")
+
+        self.summary_text.config(state=tk.NORMAL)
+        self.summary_text.delete(1.0, tk.END)
+        self.summary_text.config(state=tk.DISABLED)
+
+        if total_alerts == 0 and total_almost == 0 and total_lv99 == 0 and total_protected == 0:
+            self.log(t["msg_all_normal"], "status", widget=self.summary_text)
+        else:
+            if total_alerts > 0:
+                self.log(f" -> {total_alerts}{t['summary_alerts']}", "alert", widget=self.summary_text)
+            if total_almost > 0:
+                self.log(f" -> {total_almost}{t['summary_almost']}", "almost", widget=self.summary_text)
+            if total_lv99 > 0:
+                self.log(f" -> {total_lv99}{t['summary_lv99']}", "loc_fazenda", widget=self.summary_text)
+            if total_protected > 0:
+                self.log(f" -> {total_protected}{t['summary_protected']}", "status", widget=self.summary_text)
 
     def on_mode_change(self):
         self.is_paused = False
@@ -671,7 +848,7 @@ class DigimonMonitorApp:
                     
         return latest_file, max_mtime
         
-    def calculate_almost_data(self, data, name_offset, name, level, talent, loc):
+    def calculate_almost_data(self, data, name_offset, name, level, talent, loc, protected):
         digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
         current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
         
@@ -693,7 +870,7 @@ class DigimonMonitorApp:
         
         faltam_str = f"{faltam:,}".replace(",", ".")
         
-        return (name, level, talent, faltam, bar_str, faltam_str, loc)
+        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected)
 
     def process_save(self, filepath, filename):
         self._current_filepath = filepath
@@ -729,8 +906,10 @@ class DigimonMonitorApp:
         alerts = {"PARTY": [], "BOX": [], "FAZENDA": []}
         lv99_list = {"PARTY": [], "BOX": [], "FAZENDA": []} 
         almost_list = [] 
-        total_alerts, total_almost, total_lv99 = 0, 0, 0 
+        protected_list = []
+        total_alerts, total_almost, total_lv99, total_protected = 0, 0, 0, 0 
         
+        count_party = 0
         count_box = 0
         count_farm = 0
         
@@ -766,12 +945,14 @@ class DigimonMonitorApp:
                 processed.add(offset)
 
                 digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
+                uid = self.read_digimon_uid(data, name_offset)
                 level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
+                protected = self.read_digimon_protected(data, name_offset)
 
                 active_digimons[("FAZENDA", i)] = {
-                    'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected
                 }
 
                 if talent_raw >= 1000:
@@ -779,15 +960,22 @@ class DigimonMonitorApp:
                     if talent > 99: talent = 99 
                     
                     if level == 99:
-                        lv99_list["FAZENDA"].append((name, level, talent))
+                        lv99_list["FAZENDA"].append((name, level, talent, protected))
                         total_lv99 += 1
                     elif level >= talent: 
-                        alerts["FAZENDA"].append((name, level, talent))
+                        alerts["FAZENDA"].append((name, level, talent, protected))
                         total_alerts += 1
                     elif level == talent - 1:
-                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA")
+                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected)
                         almost_list.append(almost_data)
                         total_almost += 1
+
+                    if protected:
+                        p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected)
+                        if p_faltam <= 0:
+                            p_faltam, p_faltam_str, p_bar = 0, "0", "█" * 10
+                        protected_list.append((p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot))
+                        total_protected += 1
 
         regions = [("PARTY", 0x12C8 - 0x10, 0x10, 6), ("BOX", 0x1AA8 - 0x10, 0x10, 999)]
         for loc, start, h_size, max_s in regions:
@@ -806,18 +994,22 @@ class DigimonMonitorApp:
                     if len(name) < 2 or not (65 <= ord(name[0]) <= 90): continue
                 except: continue
 
-                if loc == "BOX": 
+                if loc == "PARTY":
+                    count_party += 1
+                elif loc == "BOX": 
                     count_box += 1
                 
                 processed.add(offset)
 
                 digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
+                uid = self.read_digimon_uid(data, name_offset)
                 level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
+                protected = self.read_digimon_protected(data, name_offset)
 
                 active_digimons[(loc, i)] = {
-                    'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected
                 }
 
                 if talent_raw >= 1000:
@@ -825,15 +1017,22 @@ class DigimonMonitorApp:
                     if talent > 99: talent = 99 
                     
                     if level == 99:
-                        lv99_list[loc].append((name, level, talent))
+                        lv99_list[loc].append((name, level, talent, protected))
                         total_lv99 += 1
                     elif level >= talent: 
-                        alerts[loc].append((name, level, talent))
+                        alerts[loc].append((name, level, talent, protected))
                         total_alerts += 1
                     elif level == talent - 1:
-                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc)
+                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected)
                         almost_list.append(almost_data)
                         total_almost += 1
+
+                    if protected:
+                        p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected)
+                        if p_faltam <= 0:
+                            p_faltam, p_faltam_str, p_bar = 0, "0", "█" * 10
+                        protected_list.append((p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot))
+                        total_protected += 1
 
         # ==========================================
         # RESOLVE WISHLIST CONTRA O SAVE ATUAL
@@ -855,17 +1054,31 @@ class DigimonMonitorApp:
                 wishlist_orphaned.append((w_idx, item))
                 continue
 
-            key = (item['loc'], item['slot'])
             dig_info = None
-            if key in active_digimons and active_digimons[key]['id'] == item['id']:
-                dig_info = active_digimons[key]
-            else:
+            item_uid = item.get('uid')
+
+            if item_uid:
                 for candidate in active_digimons.values():
-                    if candidate['id'] == item['id'] and candidate['name'] == item['name']:
+                    if candidate.get('uid') == item_uid and candidate['id'] == item['id'] and candidate['name'] == item['name']:
                         dig_info = candidate
                         break
+            else:
+                key = (item.get('loc'), item.get('slot'))
+                if key in active_digimons and active_digimons[key]['id'] == item['id'] and active_digimons[key]['name'] == item['name']:
+                    dig_info = active_digimons[key]
+                else:
+                    candidates = [candidate for candidate in active_digimons.values() if candidate['id'] == item['id'] and candidate['name'] == item['name']]
+                    if len(candidates) == 1:
+                        dig_info = candidates[0]
 
             if dig_info:
+                if item.get('uid') != dig_info.get('uid'):
+                    item['uid'] = dig_info.get('uid', '')
+                    wishlist_state_changed = True
+                if item.get('loc') != dig_info['loc'] or item.get('slot') != dig_info['slot']:
+                    item['loc'] = dig_info['loc']
+                    item['slot'] = dig_info['slot']
+                    wishlist_state_changed = True
                 wishlist_resolved.append((w_idx, item, dig_info))
             else:
                 # Digimon sumiu do save (evoluiu, foi deletado, ou o save mudou) -> vira órfão
@@ -887,13 +1100,14 @@ class DigimonMonitorApp:
             cur_exp = dig_info['exp']
             w_loc = dig_info['loc']
             w_name = dig_info['name']
+            w_protected = dig_info.get('protected', False)
 
             exp_target = get_exp_needed(dig_id, target_lvl)
             exp_base = get_exp_needed(dig_id, cur_lvl)
             faltam = exp_target - cur_exp
 
             if faltam <= 0 or cur_lvl >= target_lvl:
-                wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc))
+                wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc, w_protected))
             else:
                 prog_total = exp_target - exp_base
                 prog_atual = cur_exp - exp_base
@@ -902,7 +1116,7 @@ class DigimonMonitorApp:
                 filled = int(pct * 10)
                 bar_str = ("█" * filled) + ("░" * (10 - filled))
                 faltam_str = f"{faltam:,}".replace(",", ".")
-                wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc))
+                wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc, w_protected))
 
         # Os que bateram a meta contam no resumo junto com os alertas normais
         total_alerts += len(wishlist_reached)
@@ -942,156 +1156,111 @@ class DigimonMonitorApp:
         txt_atingiu = I18N[self.lang].get("atingiu", "<-- ATINGIU O LIMITE!")
         txt_quase = I18N[self.lang].get("quase", " ⏳ QUASE LÁ (Faltando 1 Level):")
 
-        # 1ª LISTA: ATINGIU O CAP
+        reached_rows = []
         for loc in ["PARTY", "BOX", "FAZENDA"]:
             alerts[loc].sort(key=lambda x: (x[0], x[1]))
-            for name, level, talent in alerts[loc]:
-                cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
-                self.log([
-                    (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                    (f"{name:<18} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
-                ])
+            for name, level, talent, protected in alerts[loc]:
+                reached_rows.append(("alert", loc, name, level, talent, protected))
 
-            # Itens da Wishlist que bateram a meta são "transferidos" pra cá:
-            # em branco (pra diferenciar dos nativos) e mantendo o botão de remover.
-            for w_idx, w_name, w_level, w_target, w_item_loc in wishlist_reached:
+            for w_idx, w_name, w_level, w_target, w_item_loc, w_protected in wishlist_reached:
                 if w_item_loc != loc:
                     continue
-                txt_reached = t.get("target_reached", "<-- META ATINGIDA!")
-                self.text_area.config(state=tk.NORMAL)
-                self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", "status")
-                self.text_area.insert(tk.END, f"{w_name:<18} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_reached} ", "status")
-                btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
-                                    bg="#444444", fg="red", font=("Consolas", 8, "bold"),
-                                    relief=tk.FLAT, cursor="hand2", padx=2, pady=0)
-                self.text_area.window_create(tk.END, window=btn_del)
-                self.text_area.insert(tk.END, "\n")
-                self.text_area.config(state=tk.DISABLED)
+                reached_rows.append(("wishlist", loc, w_idx, w_name, w_level, w_target, w_protected))
 
-        # 2ª LISTA: QUASE LÁ (Expansível)
-        if total_almost > 0:
-            self.log("-" * 75, "status")
+        self.update_summary_panel(count_party, count_box, count_farm, total_alerts, total_almost, total_lv99, total_protected, t, loc_lbl)
 
-            def toggle_almost():
-                self.show_almost = not getattr(self, 'show_almost', False)
+        # ==========================================
+        # LISTAS 2 a 5 — ORDEM CUSTOMIZÁVEL PELO USUÁRIO (setas ▲▼ no cabeçalho)
+        # A ordem escolhida fica salva em self.list_order / config.json
+        # ==========================================
+
+        def render_header_with_controls(label_text, tag, show_attr, btn_show_key, list_key, is_first, is_last):
+            """Cabeçalho de uma lista expansível: rótulo + setas de reordenar + botão mostrar/ocultar, tudo na mesma linha."""
+            def toggle():
+                setattr(self, show_attr, not getattr(self, show_attr, False))
                 self.save_config()
                 self.process_save(filepath, filename)
 
-            btn_text = t["btn_hide_details"] if getattr(self, 'show_almost', False) else t["btn_show_almost"]
-            btn_almost = tk.Button(self.text_area, text=btn_text, command=toggle_almost,
-                            bg="#333333", fg="white", font=("Consolas", 8, "bold"),
-                            relief=tk.FLAT, cursor="hand2", padx=8, pady=0)
+            btn_text = t["btn_hide_details"] if getattr(self, show_attr, False) else t[btn_show_key]
 
             self.text_area.config(state=tk.NORMAL)
-            self.text_area.insert(tk.END, txt_quase, "almost")
-            padding = max(2, 75 - len(txt_quase) - len(btn_text) - 2)
-            self.text_area.insert(tk.END, " " * padding, "almost")
-            self.text_area.window_create(tk.END, window=btn_almost)
+            self.text_area.insert(tk.END, label_text, tag)
+
+            controls_width = len(btn_text) + 10  # reserva espaço extra pras setas ▲▼
+            padding = max(2, 75 - len(label_text) - controls_width)
+            self.text_area.insert(tk.END, " " * padding, tag)
+
+            if not is_first:
+                btn_up = tk.Button(self.text_area, text="▲", command=lambda: self.move_list_order(list_key, -1),
+                                    bg="#333333", fg="white", font=("Consolas", 8, "bold"),
+                                    relief=tk.FLAT, cursor="hand2", padx=3, pady=0)
+                self.text_area.window_create(tk.END, window=btn_up)
+            if not is_last:
+                btn_down = tk.Button(self.text_area, text="▼", command=lambda: self.move_list_order(list_key, 1),
+                                      bg="#333333", fg="white", font=("Consolas", 8, "bold"),
+                                      relief=tk.FLAT, cursor="hand2", padx=3, pady=0)
+                self.text_area.window_create(tk.END, window=btn_down)
+
+            btn_toggle = tk.Button(self.text_area, text=btn_text, command=toggle,
+                            bg="#333333", fg="white", font=("Consolas", 8, "bold"),
+                            relief=tk.FLAT, cursor="hand2", padx=8, pady=0)
+            self.text_area.window_create(tk.END, window=btn_toggle)
             self.text_area.insert(tk.END, "\n\n")
             self.text_area.config(state=tk.DISABLED)
+
+        def append_section_divider():
+            self.text_area.config(state=tk.NORMAL)
+            self.text_area.insert(tk.END, "-" * 75 + "\n", "status")
+            self.text_area.config(state=tk.DISABLED)
+
+        def render_almost_list(is_first, is_last):
+            if total_almost <= 0:
+                return
+            render_header_with_controls(txt_quase, "almost", 'show_almost', 'btn_show_almost', 'almost', is_first, is_last)
 
             if getattr(self, 'show_almost', False):
                 almost_list.sort(key=lambda x: x[3])
-
-                for name, level, talent, faltam_int, bar_str, faltam_str, loc in almost_list:
+                for name, level, talent, faltam_int, bar_str, faltam_str, loc, protected in almost_list:
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                    lock_icon = "🔒" if protected else "  "
                     self.log([
                         (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                        (f"{name:<14} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP", "status")
+                        (f"{name:<12}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP", "status")
                     ])
 
-        self.log("-" * 75, "status")
-        
-        # RESUMO
-        self.log([
-            (f" {loc_lbl['BOX']}: {count_box}/999 ", "loc_box"),
-            ("   |   ", "status"),
-            (f" {loc_lbl['FAZENDA']}: {count_farm}/30 \n", "loc_fazenda")
-        ])
-        
-        self.log("-" * 75, "status")
-        self.log(t["lbl_summary"], "status")
-        
-        if total_alerts == 0 and total_almost == 0 and total_lv99 == 0:
-            self.log(t["msg_all_normal"], "status")
-        else:
-            if total_alerts > 0:
-                self.log(f"    -> {total_alerts}{t['summary_alerts']}", "alert")
-            if total_almost > 0:
-                self.log(f"    -> {total_almost}{t['summary_almost']}", "almost")
-            if total_lv99 > 0:
-                self.log(f"    -> {total_lv99}{t['summary_lv99']}", "loc_fazenda") 
-
-        self.log("=" * 75, "header")
-        
-        # 3ª LISTA: LEVEL 99 (Expansível)
-        if total_lv99 > 0:
-            def toggle_lv99():
-                self.show_lv99 = not getattr(self, 'show_lv99', False)
-                self.save_config()
-                self.process_save(filepath, filename)
-
-            btn_text = t["btn_hide_details"] if getattr(self, 'show_lv99', False) else t["btn_show_lv99"]
-            btn = tk.Button(self.text_area, text=btn_text, command=toggle_lv99, 
-                            bg="#333333", fg="white", font=("Consolas", 9, "bold"), 
-                            relief=tk.FLAT, cursor="hand2", padx=10, pady=2)
-            
-            self.text_area.config(state=tk.NORMAL)
-            self.text_area.window_create(tk.END, window=btn)
-            self.text_area.insert(tk.END, "\n\n")
-            self.text_area.config(state=tk.DISABLED)
+        def render_lv99_list(is_first, is_last):
+            if total_lv99 <= 0:
+                return
+            render_header_with_controls(t["lbl_lv99_title"], "loc_fazenda", 'show_lv99', 'btn_show_lv99', 'lv99', is_first, is_last)
 
             if getattr(self, 'show_lv99', False):
-                self.log(t["lbl_lv99_title"], "loc_fazenda")
-                self.log("", "status")
                 for loc in ["PARTY", "BOX", "FAZENDA"]:
                     lv99_list[loc].sort(key=lambda x: (x[0], x[1]))
-                    for name, level, talent in lv99_list[loc]:
+                    for name, level, talent, protected in lv99_list[loc]:
                         cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                        lock_icon = "🔒" if protected else "  "
                         self.log([
                             (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                            (f"{name:<18} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
+                            (f"{name:<16}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
                         ])
-                self.log("=" * 75, "header")
 
-        # ==========================================
-        # 4ª LISTA: WISHLIST / TARGET TRACKER
-        # (só quem ainda não bateu a meta; quem bateu já foi
-        #  transferido pra 1ª lista lá em cima)
-        # ==========================================
-        if wishlist_pending:
+        def render_wishlist_list(is_first, is_last):
+            if not wishlist_pending:
+                return
             wishlist_pending.sort(key=lambda x: x[0])  # Ordena da menor EXP para a maior
 
-            self.log("-" * 75, "status")
-
             wishlist_title_text = t.get("wishlist_title", " 🎯 WISHLIST / METAS DE EVOLUÇÃO:")
-
-            def toggle_wishlist():
-                self.show_wishlist = not getattr(self, 'show_wishlist', False)
-                self.save_config()
-                self.process_save(filepath, filename)
-
-            btn_text = t["btn_hide_details"] if getattr(self, 'show_wishlist', False) else t["btn_show_wishlist"]
-            btn_wishlist = tk.Button(self.text_area, text=btn_text, command=toggle_wishlist,
-                            bg="#333333", fg="white", font=("Consolas", 8, "bold"),
-                            relief=tk.FLAT, cursor="hand2", padx=8, pady=0)
-
-            self.text_area.config(state=tk.NORMAL)
-            self.text_area.insert(tk.END, wishlist_title_text, "header")
-            padding = max(2, 75 - len(wishlist_title_text) - len(btn_text) - 2)
-            self.text_area.insert(tk.END, " " * padding, "header")
-            self.text_area.window_create(tk.END, window=btn_wishlist)
-            self.text_area.insert(tk.END, "\n\n")
-            self.text_area.config(state=tk.DISABLED)
+            render_header_with_controls(wishlist_title_text, "header", 'show_wishlist', 'btn_show_wishlist', 'wishlist', is_first, is_last)
 
             if getattr(self, 'show_wishlist', False):
-                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc in wishlist_pending:
+                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected in wishlist_pending:
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                    lock_icon = "🔒" if protected else "  "
 
                     self.text_area.config(state=tk.NORMAL)
                     self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
 
-                    msg = f"{name:<14} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
+                    msg = f"{name:<12}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
                     self.text_area.insert(tk.END, msg, "status")
 
                     # Botão Deletar Inline [X]
@@ -1103,7 +1272,90 @@ class DigimonMonitorApp:
                     self.text_area.insert(tk.END, "\n")
                     self.text_area.config(state=tk.DISABLED)
 
-                self.log("=" * 75, "header")
+        def render_protected_list(is_first, is_last):
+            if total_protected <= 0:
+                return
+            protected_list.sort(key=lambda x: x[3])  # Ordena da menor EXP faltando para a maior
+            render_header_with_controls(t["protected_list_title"], "header_orange", 'show_protected', 'btn_show_protected', 'protected', is_first, is_last)
+
+            if getattr(self, 'show_protected', False):
+                for name, level, talent, faltam_int, bar_str, faltam_str, loc, protected in protected_list:
+                    cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                    if level >= talent:
+                        self.log([
+                            (f" [{loc_lbl[loc]:^7}] ", cor_tag),
+                            (f"🔒 {name:<12} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
+                        ])
+                    else:
+                        self.log([
+                            (f" [{loc_lbl[loc]:^7}] ", cor_tag),
+                            (f"🔒 {name:<12} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP", "status")
+                        ])
+
+        def render_reached_cap_section():
+            if not reached_rows:
+                return
+            self.text_area.config(state=tk.NORMAL)
+            self.text_area.insert(tk.END, t.get("cap_list_title", " 🏁 REACHED THE CAP:"), "header_red")
+            self.text_area.insert(tk.END, "\n\n")
+            self.text_area.config(state=tk.DISABLED)
+            for entry_type, loc, *entry_data in reached_rows:
+                if entry_type == "alert":
+                    name, level, talent, protected = entry_data
+                    cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                    lock_icon = "🔒" if protected else "  "
+                    self.log([
+                        (f" [{loc_lbl[loc]:^7}] ", cor_tag),
+                        (f"{name:<16}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
+                    ])
+                else:
+                    w_idx, w_name, w_level, w_target, w_protected = entry_data
+                    cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                    w_lock_icon = "🔒" if w_protected else "  "
+                    self.text_area.config(state=tk.NORMAL)
+                    self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
+                    self.text_area.insert(tk.END, f"{w_name:<16}{w_lock_icon} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_atingiu} ", "status")
+                    btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
+                                        bg="#444444", fg="red", font=("Consolas", 8, "bold"),
+                                        relief=tk.FLAT, cursor="hand2", padx=2, pady=0)
+                    self.text_area.window_create(tk.END, window=btn_del)
+                    self.text_area.insert(tk.END, "\n")
+                    self.text_area.config(state=tk.DISABLED)
+
+        renderers = {
+            'almost': render_almost_list,
+            'lv99': render_lv99_list,
+            'wishlist': render_wishlist_list,
+            'protected': render_protected_list,
+        }
+
+        order = self.get_normalized_list_order()
+        sections_rendered = 0
+        if reached_rows:
+            render_reached_cap_section()
+            sections_rendered += 1
+
+        for idx, key in enumerate(order):
+            if key == 'almost' and total_almost > 0:
+                if sections_rendered > 0:
+                    append_section_divider()
+                renderers[key](idx == 0, idx == len(order) - 1)
+                sections_rendered += 1
+            elif key == 'lv99' and total_lv99 > 0:
+                if sections_rendered > 0:
+                    append_section_divider()
+                renderers[key](idx == 0, idx == len(order) - 1)
+                sections_rendered += 1
+            elif key == 'wishlist' and wishlist_pending:
+                if sections_rendered > 0:
+                    append_section_divider()
+                renderers[key](idx == 0, idx == len(order) - 1)
+                sections_rendered += 1
+            elif key == 'protected' and total_protected > 0:
+                if sections_rendered > 0:
+                    append_section_divider()
+                renderers[key](idx == 0, idx == len(order) - 1)
+                sections_rendered += 1
 
         if not self.is_paused:
             self.log(t["waiting_msg"], "status")
