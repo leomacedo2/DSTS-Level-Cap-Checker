@@ -84,7 +84,7 @@ I18N = {
         "lbl_summary": " ⚠️  Summary:",
         "msg_all_normal": "    All Digimons are evolving normally.",
         "summary_alerts": " digimon(s) reached the Maximum limit",
-        "summary_almost": " digimon(s) need 1 more level to reach the Maximum limit",
+        "summary_almost": " digimon(s) need 1 more level to reach the Max",
         "summary_lv99": " digimon(s) are at level 99",
         "summary_protected": " digimon(s) are protected (locked)",
         "protected_list_title": " 🔒 PROTECTED DIGIMONS:",
@@ -100,6 +100,8 @@ I18N = {
         "limite_abbr": "Cap",
         "faltam_abbr": "Missing:",
         "wishlist_title": " 🎯 TARGET WISHLIST / EVOLUTION GOALS:",
+        "btn_view_remaining": "View remaining Digimons",
+        "btn_hide_remaining": "Hide remaining Digimons",
         "target_reached": "<-- TARGET REACHED!",
         "wishlist_auto_removed": "⚠️  WISHLIST: digimon(s) not found in the current save (evolved / released / different save):",
         "wishlist_panel_title": "🎯 WISHLIST / TARGET TRACKER",
@@ -170,6 +172,8 @@ I18N = {
         "limite_abbr": "Limite",
         "faltam_abbr": "Faltam:",
         "wishlist_title": " 🎯 WISHLIST / METAS DE EVOLUÇÃO:",
+        "btn_view_remaining": "Visualizar o restante dos digimons",
+        "btn_hide_remaining": "Ocultar Digimons restantes",
         "target_reached": "<-- META ATINGIDA!",
         "wishlist_auto_removed": "⚠️  WISHLIST: digimon(s) não encontrado(s) no save atual (evoluiu / foi liberado / save diferente):",
         "wishlist_panel_title": "🎯 WISHLIST / META TRACKER",
@@ -210,6 +214,8 @@ class DigimonMonitorApp:
         
         if not self.initialize_config():
             return
+        # Estado temporário da sublista 'restantes' (não persistido no config.json)
+        self.show_remaining = False
             
         self.mode = tk.StringVar(value="AUTO")
         self.is_paused = False
@@ -951,8 +957,11 @@ class DigimonMonitorApp:
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                 protected = self.read_digimon_protected(data, name_offset)
 
+                talent = talent_raw // 1000 if talent_raw >= 1000 else 1
+                if talent > 99: talent = 99
+
                 active_digimons[("FAZENDA", i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected, 'talent': talent
                 }
 
                 if talent_raw >= 1000:
@@ -1008,8 +1017,11 @@ class DigimonMonitorApp:
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                 protected = self.read_digimon_protected(data, name_offset)
 
+                talent = talent_raw // 1000 if talent_raw >= 1000 else 1
+                if talent > 99: talent = 99
+
                 active_digimons[(loc, i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected, 'talent': talent
                 }
 
                 if talent_raw >= 1000:
@@ -1227,6 +1239,74 @@ class DigimonMonitorApp:
                         (f" [{loc_lbl[loc]:^7}] ", cor_tag),
                         (f"{name:<12}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP", "status")
                     ])
+
+                # Botão para visualizar/ocultar a sublista enorme dos restantes
+                def toggle_remaining():
+                    self.show_remaining = not getattr(self, 'show_remaining', False)
+                    # Re-renderiza a tela atual
+                    self.process_save(filepath, filename)
+
+                btn_label = t.get('btn_view_remaining') if not getattr(self, 'show_remaining', False) else t.get('btn_hide_remaining')
+                btn_toggle = tk.Button(self.text_area, text=btn_label, command=toggle_remaining,
+                                       bg="#333333", fg="white", font=("Consolas", 8, "bold"),
+                                       relief=tk.FLAT, cursor="hand2", padx=8, pady=0)
+                # Pula uma linha antes do botão
+                self.text_area.insert(tk.END, "\n")
+                self.text_area.window_create(tk.END, window=btn_toggle)
+                # Pula uma linha depois do botão
+                self.text_area.insert(tk.END, "\n\n")
+
+                # Renderiza a sublista com todos os digimons restantes (quando ativa)
+                def render_remaining_sublist():
+                    if not getattr(self, 'show_remaining', False):
+                        return
+
+                    # Construir lista de candidatos: todos os active_digimons que não estão em 'almost' e que ainda estão abaixo do talento
+                    remaining = []
+                    for key, cand in active_digimons.items():
+                        try:
+                            d_id = cand['id']
+                            lvl = cand['level']
+                            cur_exp = cand['exp']
+                            talent = cand.get('talent', 1)
+                        except Exception:
+                            continue
+
+                        # Excluir quem está na lista 'Quase lá' (level == talent - 1) e quem já atingiu/ultrapassou o talento
+                        if talent <= 1:
+                            continue
+                        if lvl == talent - 1:
+                            continue
+                        if lvl >= talent:
+                            continue
+
+                        exp_alvo = get_exp_needed(d_id, talent)
+                        exp_base = get_exp_needed(d_id, lvl)
+                        faltam = exp_alvo - cur_exp
+                        progresso_total = exp_alvo - exp_base
+                        progresso_atual = cur_exp - exp_base
+                        porcentagem = 0
+                        if progresso_total > 0:
+                            porcentagem = max(0, min(1, progresso_atual / progresso_total))
+                        filled = int(porcentagem * 10)
+                        bar_str = ("█" * filled) + ("░" * (10 - filled))
+                        faltam_str = f"{faltam:,}".replace(",", ".")
+                        remaining.append((faltam, cand['name'], lvl, talent, bar_str, faltam_str, cand['loc'], cand.get('protected', False)))
+
+                    remaining.sort(key=lambda x: (x[0], x[1]))
+
+                    # Exibir sumário e linhas (pode ser grande)
+                    self.text_area.config(state=tk.NORMAL)
+                    self.text_area.insert(tk.END, f"--- {len(remaining)} digimon(s) restantes ---\n", "status")
+                    for faltam, name, lvl, talent, bar_str, faltam_str, loc, protected in remaining:
+                        cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
+                        lock_icon = "🔒" if protected else "  "
+                        self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
+                        self.text_area.insert(tk.END, f"{name:<12}{lock_icon} ({t['lvl_abbr']} {lvl:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP\n", "status")
+                    self.text_area.insert(tk.END, "\n")
+                    self.text_area.config(state=tk.DISABLED)
+
+                render_remaining_sublist()
 
         def render_lv99_list(is_first, is_last):
             if total_lv99 <= 0:
