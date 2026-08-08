@@ -50,6 +50,15 @@ FG_ALMOST = "#FFD700"
 PANEL_BG = "#1E1E1E"
 BTN_BG = "#333333"
 
+# Ciclo de limites para a lista "Quase lá": altere apenas os dois primeiros valores se quiser mudar o ciclo.
+QUASE_LIST_CYCLE = [14, 34, 0]  # 0 = mostrar todos
+
+# A faixa fixa da barrinha vai até quanto de xp? Altere aqui.
+MAX_LEVEL_BARRA = 35000
+
+# A faixa de espaços para o truncamento inteligente de nomes para as barras ficarem alinhadas:
+MAX_NAME_LEN = 18
+
 # ==========================================
 # DICIONÁRIO DE IDIOMAS (i18n)
 # ==========================================
@@ -58,7 +67,7 @@ I18N = {
         "settings": "⚙️ SETTINGS",
         "atingiu": "<-- REACHED THE CAP!",
         "cap_list_title": " 🏁 REACHED THE CAP:",
-        "quase": " ⏳ ALMOST THERE (Missing 1 Level):",
+        "quase": " ⏳ ALMOST THERE. (Closest to reach the limit)",
         "modo_auto": "Automatic Mode",
         "modo_manual": "Manual Mode (Ignore auto-save)",
         "btn_change_folder": "📂 Change Save Folder",
@@ -87,12 +96,28 @@ I18N = {
         "summary_almost": " digimon(s) need 1 more level to reach the Max",
         "summary_lv99": " digimon(s) are at level 99",
         "summary_protected": " digimon(s) are protected (locked)",
-        "protected_list_title": " 🔒 PROTECTED DIGIMONS:",
-        "btn_show_protected": "Click to see protected digimons",
         "btn_hide_details": "Hide details",
         "btn_show_lv99": "Click to see the Level 99 digimons",
         "btn_show_almost": "Click to see who's almost there",
+        "btn_show_remaining": "View remaining digimons",
+        "btn_hide_remaining": "Hide remaining digimons",
+        "remaining_list_title": " 🔍 REMAINING DIGIMONS:",
         "btn_show_wishlist": "Click to see the Wishlist",
+        "btn_quase_show_until_10": f"Show up to {QUASE_LIST_CYCLE[0]} Digimons",
+        "btn_quase_show_until_30": f"Show up to {QUASE_LIST_CYCLE[1]} Digimons",
+        "btn_quase_show_until_all": "Show all digimons",
+        "btn_quase_show_until_custom": "Show up to {count} Digimons",
+        "msg_quase_invalid_count": "Enter a valid number for the amount.",
+        "lbl_quase_or_show_until": "or Show up to:",
+        "btn_quase_fetch": "🔍 Search",
+        "radio_all": "All",
+        "radio_party": "Party",
+        "radio_box": "Box",
+        "radio_farm": "Farm",
+        "checkbox_protected": "Protected",
+        "checkbox_wishlist": "Wishlist",
+        "checkbox_wishlist_help": "Include wishlist targets in the 'Almost there' list and compare them using the Target level.",
+        "msg_quase_no_results": "No digimons match the applied filters.",
         "lbl_lv99_title": " 👑 DIGIMONS AT MAXIMUM LEVEL (99):",
         "waiting_msg": "\n[Waiting for game update... Keep this open on the 2nd screen]",
         "paused_msg": "\n[TRACKING PAUSED. Click the red side button to return to the radar]",
@@ -100,8 +125,6 @@ I18N = {
         "limite_abbr": "Cap",
         "faltam_abbr": "Missing:",
         "wishlist_title": " 🎯 TARGET WISHLIST / EVOLUTION GOALS:",
-        "btn_view_remaining": "View remaining Digimons",
-        "btn_hide_remaining": "Hide remaining Digimons",
         "target_reached": "<-- TARGET REACHED!",
         "wishlist_auto_removed": "⚠️  WISHLIST: digimon(s) not found in the current save (evolved / released / different save):",
         "wishlist_panel_title": "🎯 WISHLIST / TARGET TRACKER",
@@ -121,8 +144,9 @@ I18N = {
         "wishlist_err_target_too_high": "The Target Level ({tgt}) cannot be GREATER than the Digimon's current Talent/Cap ({cap}).",
         "btn_wishlist_readd": "🔄 Re-add",
         "btn_wishlist_forget": "❌ Remove",
-        "wishlist_not_found_msg": "'{name}' was not found in the current save. It may have evolved, been released, or you might be viewing a different save file.",
+        "wishlist_not_found_msg": "'{name}' was not present in your inventory. The save was likely overwritten or deleted.",
         "wishlist_readded_msg": "'{name}' is present in the current save again and was restored to the wishlist.",
+        "wishlist_ctx_paused": "You can add Digimon from this save ({save}) to the Wishlist below:",
         "target_abbr": "Target",
         "loc_labels": {"PARTY": "PARTY", "BOX": "BOX", "FAZENDA": "FARM"}
     },
@@ -130,7 +154,7 @@ I18N = {
         "settings": "⚙️ CONFIGURAÇÕES",
         "atingiu": "<-- ATINGIU O LIMITE!",
         "cap_list_title": " 🏁 CHEGOU NO CAP:",
-        "quase": " ⏳ QUASE LÁ (Faltando 1 Level):",
+        "quase": " ⏳ QUASE LÁ. (Mais próximos de chegar no limite)",
         "modo_auto": "Modo Automático",
         "modo_manual": "Modo Manual (Ignora o Auto-Save)",
         "btn_change_folder": "📂 Mudar Pasta de Saves",
@@ -159,11 +183,12 @@ I18N = {
         "summary_almost": " digimon(s) falta 1 level para o limite Máximo",
         "summary_lv99": " digimon(s) estão no level 99",
         "summary_protected": " digimon(s) estão protegidos (cadeado)",
-        "protected_list_title": " 🔒 DIGIMONS PROTEGIDOS:",
-        "btn_show_protected": "Clique para ver os digimons protegidos",
         "btn_hide_details": "Ocultar detalhes",
         "btn_show_lv99": "Clique para ver os digimons no Nv. 99",
         "btn_show_almost": "Clique para ver quem está quase lá",
+        "btn_show_remaining": "Visualizar o restante dos digimons",
+        "btn_hide_remaining": "Ocultar Digimons restantes",
+        "remaining_list_title": " 🔍 RESTANTE DOS DIGIMONS:",
         "btn_show_wishlist": "Clique para ver a Wishlist",
         "lbl_lv99_title": " 👑 DIGIMONS NO LEVEL MÁXIMO (99):",
         "waiting_msg": "\n[Aguardando atualização do jogo... Mantenha aberto na 2ª tela]",
@@ -172,8 +197,6 @@ I18N = {
         "limite_abbr": "Limite",
         "faltam_abbr": "Faltam:",
         "wishlist_title": " 🎯 WISHLIST / METAS DE EVOLUÇÃO:",
-        "btn_view_remaining": "Visualizar o restante dos digimons",
-        "btn_hide_remaining": "Ocultar Digimons restantes",
         "target_reached": "<-- META ATINGIDA!",
         "wishlist_auto_removed": "⚠️  WISHLIST: digimon(s) não encontrado(s) no save atual (evoluiu / foi liberado / save diferente):",
         "wishlist_panel_title": "🎯 WISHLIST / META TRACKER",
@@ -193,8 +216,23 @@ I18N = {
         "wishlist_err_target_too_high": "O Target Level ({tgt}) não pode ser MAIOR que o Talento/Limite atual do Digimon ({cap}).",
         "btn_wishlist_readd": "🔄 Readicionar",
         "btn_wishlist_forget": "❌ Remover",
-        "wishlist_not_found_msg": "'{name}' não foi encontrado no save atual. Ele pode ter evoluído, sido liberado, ou você pode estar vendo um save diferente.",
+        "wishlist_not_found_msg": "'{name}' não está presente no seu inventário. Provavelmente o save foi sobrescrito ou deletado.",
         "wishlist_readded_msg": "'{name}' está presente no save atual novamente e foi restaurado na wishlist.",
+        "wishlist_ctx_paused": "Você pode adicionar Digimons deste save ({save}) na Wishlist aqui embaixo:",
+        "btn_quase_show_until_10": f"Mostrar até {QUASE_LIST_CYCLE[0]} Digimons",
+        "btn_quase_show_until_30": f"Mostrar até {QUASE_LIST_CYCLE[1]} Digimons",
+        "btn_quase_show_until_all": "Mostrar todos os Digimons",
+        "btn_quase_show_until_custom": "Mostrar até {count} Digimons",
+        "msg_quase_invalid_count": "Digite um número válido para a quantidade.",
+        "lbl_quase_or_show_until": "ou Mostrar até:",
+        "btn_quase_fetch": "🔍 Buscar",
+        "radio_all": "Todos",
+        "radio_party": "Party",
+        "radio_box": "Box",
+        "radio_farm": "Fazenda",
+        "checkbox_protected": "Protegidos",
+        "checkbox_wishlist": "Wishlist",
+        "checkbox_wishlist_help": "Inclui os Digimon da Wishlist na lista 'Quase lá' e usa o Nível Alvo como critério de comparação.",
         "target_abbr": "Alvo",
         "loc_labels": {"PARTY": "PARTY", "BOX": "BOX", "FAZENDA": "FAZENDA"}
     }
@@ -214,8 +252,6 @@ class DigimonMonitorApp:
         
         if not self.initialize_config():
             return
-        # Estado temporário da sublista 'restantes' (não persistido no config.json)
-        self.show_remaining = False
             
         self.mode = tk.StringVar(value="AUTO")
         self.is_paused = False
@@ -241,10 +277,14 @@ class DigimonMonitorApp:
         self.show_almost = self.config_data.get("show_almost", False)
         self.show_lv99 = self.config_data.get("show_lv99", False)
         self.show_wishlist = self.config_data.get("show_wishlist", False)
-        self.show_protected = self.config_data.get("show_protected", False)
+        self.show_remaining = False
+        self.quase_list_max_count = self.config_data.get("quase_list_max_count", QUASE_LIST_CYCLE[0])
+        self.quase_filter_location = self.config_data.get("quase_filter_location", "TODOS")
+        self.quase_filter_protected = self.config_data.get("quase_filter_protected", False)
+        self.quase_filter_wishlist = self.config_data.get("quase_filter_wishlist", False)
 
-        # Ordem das listas reordenáveis (2, 3, 4, 5). A 1ª lista (Level Cap) é sempre fixa.
-        self.list_order = self.config_data.get("list_order", ["almost", "lv99", "wishlist", "protected"])
+        # Ordem das listas reordenáveis (2, 3, 4). A 1ª lista (Level Cap) é sempre fixa.
+        self.list_order = self.config_data.get("list_order", ["almost", "lv99", "wishlist"])
 
         if "geometry" in self.config_data:
             self.root.geometry(self.config_data["geometry"])
@@ -279,7 +319,10 @@ class DigimonMonitorApp:
         self.config_data["show_almost"] = getattr(self, 'show_almost', False)
         self.config_data["show_lv99"] = getattr(self, 'show_lv99', False)
         self.config_data["show_wishlist"] = getattr(self, 'show_wishlist', False)
-        self.config_data["show_protected"] = getattr(self, 'show_protected', False)
+        self.config_data["quase_list_max_count"] = getattr(self, 'quase_list_max_count', QUASE_LIST_CYCLE[0])
+        self.config_data["quase_filter_location"] = getattr(self, 'quase_filter_location', "TODOS")
+        self.config_data["quase_filter_protected"] = getattr(self, 'quase_filter_protected', False)
+        self.config_data["quase_filter_wishlist"] = getattr(self, 'quase_filter_wishlist', False)
         self.config_data["list_order"] = self.get_normalized_list_order()
         try:
             with open(CONFIG_FILE, "w") as f:
@@ -287,16 +330,20 @@ class DigimonMonitorApp:
         except Exception:
             pass
 
+    def toggle_remaining(self, filepath, filename):
+        self.show_remaining = not self.show_remaining
+        self.process_save(filepath, filename)
+
     def on_closing(self):
         self.save_config()
         self.root.destroy()
 
     def get_normalized_list_order(self):
-        """Garante que self.list_order sempre contenha exatamente as 4 chaves válidas
-        (almost, lv99, wishlist, protected), preservando a ordem já salva e anexando
-        no final qualquer chave nova que ainda não existisse (ex: quando esta lista
-        de Protegidos foi adicionada em uma versão mais nova do programa)."""
-        valid_keys = ["almost", "lv99", "wishlist", "protected"]
+        """Garante que self.list_order sempre contenha exatamente as 3 chaves válidas
+        (almost, lv99, wishlist), preservando a ordem já salva, removendo qualquer chave
+        antiga que não exista mais (ex: 'protected', de uma versão anterior do programa),
+        e anexando no final qualquer chave nova que ainda não existisse."""
+        valid_keys = ["almost", "lv99", "wishlist"]
         current = getattr(self, 'list_order', None) or []
         normalized = [k for k in current if k in valid_keys]
         for k in valid_keys:
@@ -306,7 +353,7 @@ class DigimonMonitorApp:
         return normalized
 
     def move_list_order(self, key, direction):
-        """Move uma lista reordenável (2ª a 5ª) uma posição pra cima (-1) ou pra baixo (+1)."""
+        """Move uma lista reordenável (2ª a 4ª) uma posição pra cima (-1) ou pra baixo (+1)."""
         order = self.get_normalized_list_order()
         if key not in order:
             return
@@ -354,9 +401,41 @@ class DigimonMonitorApp:
         self.lbl_wishlist_target.config(text=t["wishlist_target_label"])
         self.btn_wish_add.config(text=t["wishlist_add_btn"])
         self.lbl_summary_title.config(text=t["lbl_summary"])
+        if hasattr(self, "chk_quase_protected"):
+            self.chk_quase_protected.config(text=t["checkbox_protected"])
+        if hasattr(self, "chk_quase_wishlist"):
+            self.chk_quase_wishlist.config(text=t["checkbox_wishlist"])
+            self._quase_wishlist_hint_text = t["checkbox_wishlist_help"]
 
         if hasattr(self, "_current_filepath") and os.path.exists(self._current_filepath):
             self.process_save(self._current_filepath, self._current_filename)
+
+    def _show_quase_wishlist_hint(self, event, text=None):
+        if not hasattr(self, "_quase_wishlist_tooltip"):
+            self._quase_wishlist_tooltip = tk.Toplevel(self.root)
+            self._quase_wishlist_tooltip.withdraw()
+            self._quase_wishlist_tooltip.overrideredirect(True)
+            self._quase_wishlist_tooltip_label = tk.Label(
+                self._quase_wishlist_tooltip,
+                text="",
+                bg="#333333",
+                fg="white",
+                padx=8,
+                pady=4,
+                relief="solid",
+                borderwidth=1,
+                font=("Consolas", 8),
+            )
+            self._quase_wishlist_tooltip_label.pack()
+        if text is None:
+            text = getattr(self, "_quase_wishlist_hint_text", "")
+        self._quase_wishlist_tooltip_label.config(text=text)
+        self._quase_wishlist_tooltip.geometry(f"+{event.x_root + 12}+{event.y_root + 12}")
+        self._quase_wishlist_tooltip.deiconify()
+
+    def _hide_quase_wishlist_hint(self, event=None):
+        if hasattr(self, "_quase_wishlist_tooltip"):
+            self._quase_wishlist_tooltip.withdraw()
 
     def setup_ui(self):
         main_frame = tk.Frame(self.root, bg=BG_COLOR)
@@ -419,6 +498,12 @@ class DigimonMonitorApp:
         
         self.lbl_wishlist_title = tk.Label(control_frame, text=I18N[self.lang]["wishlist_panel_title"], bg=PANEL_BG, fg="white", font=("Consolas", 10, "bold"))
         self.lbl_wishlist_title.pack(pady=(0, 6))
+
+        # Aviso contextual: só aparece quando pausado/inspecionando um save específico,
+        # avisando que dá pra adicionar Digimons desse save na Wishlist aqui embaixo.
+        self.lbl_wishlist_context = tk.Label(control_frame, text="", bg=PANEL_BG, fg="#87CEFA",
+                                              font=("Consolas", 8, "italic"), wraplength=380, justify="left")
+        # Só é "packado" (mostrado) quando há algo pra dizer — ver update_wishlist_context_label()
 
         # 1. Busca por ID ou Nome (label em cima, campo embaixo, botão de largura total)
         self.lbl_wishlist_search = tk.Label(control_frame, text=I18N[self.lang]["wishlist_search_label"], bg=PANEL_BG, fg="white", font=("Consolas", 9))
@@ -501,6 +586,9 @@ class DigimonMonitorApp:
 
         self.lbl_farm_count = tk.Label(occupancy_frame, text="FAZENDA: -/30", bg=PANEL_BG, fg="#32CD32", font=("Consolas", 13, "bold"))
         self.lbl_farm_count.pack(side=tk.LEFT)
+
+        self.lbl_total_count = tk.Label(control_frame, text="TOTAL: -", bg=PANEL_BG, fg="white", font=("Consolas", 12, "bold"))
+        self.lbl_total_count.pack(anchor="w", padx=15, pady=(8, 0))
         # ==========================================
 
         log_frame = tk.Frame(main_frame, bg=BG_COLOR)
@@ -521,10 +609,20 @@ class DigimonMonitorApp:
         self.text_area.tag_config("header", foreground="#00BFFF", font=("Consolas", 12, "bold"))
         self.text_area.tag_config("header_red", foreground="#FF4D4D", font=("Consolas", 12, "bold"))
         self.text_area.tag_config("header_orange", foreground="#FFA500", font=("Consolas", 12, "bold"))
+        self.text_area.tag_config("header_yellow", foreground="#FFD700", font=("Consolas", 12, "bold"))
+        self.text_area.tag_config("header_green", foreground="#32CD32", font=("Consolas", 12, "bold"))
         self.text_area.tag_config("status", foreground="white")
         self.text_area.tag_config("loc_party", foreground="#FFA500") 
         self.text_area.tag_config("loc_box", foreground="#1E90FF")   
         self.text_area.tag_config("loc_fazenda", foreground="#32CD32") 
+
+        self.quase_filter_loc_var = tk.StringVar(value=self.quase_filter_location)
+        self.quase_filter_protected_var = tk.BooleanVar(value=self.quase_filter_protected)
+        self.quase_filter_wishlist_var = tk.BooleanVar(value=self.quase_filter_wishlist)
+        self.quase_limit_entry_var = tk.StringVar()
+        self._quase_wishlist_hint_text = I18N[self.lang]["checkbox_wishlist_help"]
+
+        self.update_wishlist_context_label()
 
     def _validate_target_lvl_input(self, proposed_value):
         """Validação de campo (usada pelo Entry do Target Level): só aceita vazio ou até 2 dígitos numéricos (nível vai de 1 a 99)."""
@@ -562,8 +660,16 @@ class DigimonMonitorApp:
             return 0, 0
         return max(0, current_exp - exp_base), exp_next - exp_base
 
+    def build_progress_bar(self, remaining_xp, total_needed=None, length=10):
+        max_remaining = MAX_LEVEL_BARRA
+        remaining = max(0, min(max_remaining, remaining_xp))
+        filled = int(((max_remaining - remaining) / max_remaining) * length)
+        filled = max(0, min(length, filled))
+        return ("█" * filled) + ("░" * (length - filled))
+
     def search_wishlist_digimon(self):
-        """Busca o Digimon pelo ID ou pelo Nome no save atualmente ativo."""
+        """Busca o Digimon pelo ID ou pelo Nome dentro do que já foi lido do save atualmente carregado
+        (seja pelo monitoramento ao vivo, seja pelo 'Inspecionar Save' pausado) — sem reler/redescriptografar nada."""
         t = I18N[self.lang]
         loc_lbl = t["loc_labels"]
         query_text = self.entry_wish_id.get().strip()
@@ -571,85 +677,27 @@ class DigimonMonitorApp:
             messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_empty_query"])
             return
 
-        is_id_search = query_text.isdigit()
-        search_id = int(query_text) if is_id_search else None
-        search_name = query_text.lower() if not is_id_search else None
-
-        if not os.path.exists(SAVE_FILE_DEC):
+        active = getattr(self, 'active_digimons', None)
+        if not active:
             messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_no_save"])
             return
 
-        with open(SAVE_FILE_DEC, "rb") as f:
-            data = f.read()
-
-        self.search_results_map = []
-        combo_options = []
+        is_id_search = query_text.isdigit()
+        search_id = int(query_text) if is_id_search else None
+        search_name = query_text.lower() if not is_id_search else None
 
         def match_criteria(d_id, d_name):
             if is_id_search:
                 return d_id == search_id
             return search_name in d_name.lower()
 
-        # 1. Busca na Fazenda
-        FARM_START = 0x539C8
-        FARM_SIZE = 344
-        HEADER_FARM = 0x18
-        for i in range(30):
-            offset = FARM_START + (i * FARM_SIZE)
-            if offset + FARM_SIZE <= len(data) and data[offset] == 1:
-                name_offset = offset + HEADER_FARM
-                d_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
-                
-                name_bytes = bytearray()
-                for b in data[name_offset : name_offset + 32]:
-                    if b == 0: break
-                    name_bytes.append(b)
-                name = name_bytes.decode('ascii', errors='ignore')
-
-                if match_criteria(d_id, name):
-                    uid = self.read_digimon_uid(data, name_offset)
-                    level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
-                    exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
-                    talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
-                    talent = talent_raw // 1000 if talent_raw >= 1000 else 1
-                    if talent > 99: talent = 99
-                    protected = self.read_digimon_protected(data, name_offset)
-                    
-                    info = {'uid': uid, 'id': d_id, 'name': name, 'loc': 'FAZENDA', 'slot': i, 'level': level, 'exp': exp, 'talent': talent, 'protected': protected}
-                    self.search_results_map.append(info)
-                    exp_str = self.get_level_exp_display(d_id, level, exp)
-                    lock_icon = " 🔒" if protected else ""
-                    combo_options.append(f"{name}{lock_icon} [{loc_lbl['FAZENDA']}] - {t['lvl_abbr']}{level}/{talent} | EXP {exp_str} | Ref {uid}")
-
-        # 2. Busca na Party e Box
-        regions = [("PARTY", 0x12C8 - 0x10, 0x10, 6), ("BOX", 0x1AA8 - 0x10, 0x10, 999)]
-        for loc, start, h_size, max_s in regions:
-            for i in range(max_s):
-                offset = start + (i * DIGIMON_SIZE)
-                if offset + DIGIMON_SIZE <= len(data) and data[offset] == 1:
-                    name_offset = offset + h_size
-                    d_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
-                    
-                    name_bytes = bytearray()
-                    for b in data[name_offset : name_offset + 32]:
-                        if b == 0: break
-                        name_bytes.append(b)
-                    name = name_bytes.decode('ascii', errors='ignore')
-
-                    if match_criteria(d_id, name):
-                        uid = self.read_digimon_uid(data, name_offset)
-                        level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
-                        exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
-                        talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
-                        talent = talent_raw // 1000 if talent_raw >= 1000 else 1
-                        if talent > 99: talent = 99
-                        protected = self.read_digimon_protected(data, name_offset)
-                        
-                        info = {'uid': uid, 'id': d_id, 'name': name, 'loc': loc, 'slot': i, 'level': level, 'exp': exp, 'talent': talent, 'protected': protected}
-                        self.search_results_map.append(info)
-                        exp_str = self.get_level_exp_display(d_id, level, exp)
-                        lock_icon = " 🔒" if protected else ""
-                        combo_options.append(f"{name}{lock_icon} [{loc_lbl[loc]}] - {t['lvl_abbr']}{level}/{talent} | EXP {exp_str} | Ref {uid}")
+        current_save = getattr(self, '_current_filename', '')
+        self.search_results_map = []
+        for info in active.values():
+            if match_criteria(info['id'], info['name']):
+                entry = dict(info)
+                entry['save'] = current_save
+                self.search_results_map.append(entry)
 
         if self.search_results_map:
             def sort_wishlist_result(info):
@@ -660,8 +708,8 @@ class DigimonMonitorApp:
             combo_options = []
             for info in self.search_results_map:
                 exp_str = self.get_level_exp_display(info['id'], info['level'], info['exp'])
-                lock_icon = " 🔒" if info.get('protected') else ""
-                combo_options.append(f"{info['name']}{lock_icon} [{loc_lbl[info['loc']]}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
+                lock_icon = "🔒 " if info.get('protected') else ""
+                combo_options.append(f"{lock_icon}{info['name']} [{loc_lbl[info['loc']]}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
 
             self.combo_wish_results['values'] = combo_options
             self.combo_wish_results.current(0)
@@ -706,7 +754,8 @@ class DigimonMonitorApp:
             'loc': selected_info['loc'],
             'slot': selected_info['slot'],
             'target_lvl': target_lvl,
-            'orphaned': False
+            'orphaned': False,
+            'save': selected_info.get('save', '')
         }
         self.wishlist.append(item)
         self.save_config() 
@@ -773,6 +822,33 @@ class DigimonMonitorApp:
                     available_saves.append(filename)
         self.save_combo['values'] = available_saves
 
+    def get_most_recent_save(self):
+        """Save modificado mais recentemente entre todos os que existem (incluindo o auto-save 0000.bin,
+        que é o mais usado na prática já que o jogo escreve nele o tempo todo)."""
+        if not self.save_dir or not os.path.exists(self.save_dir):
+            return None
+        latest_name, max_mtime = None, 0
+        for i in range(16):
+            fname = f"{i:04d}.bin"
+            fpath = os.path.join(self.save_dir, fname)
+            if os.path.exists(fpath):
+                mtime = os.path.getmtime(fpath)
+                if mtime > max_mtime:
+                    max_mtime = mtime
+                    latest_name = fname
+        return latest_name
+
+    def update_wishlist_context_label(self):
+        """Atualiza o aviso contextual da Wishlist: só aparece quando pausado/inspecionando um save
+        específico, avisando que dá pra adicionar Digimons desse save na Wishlist ali mesmo."""
+        t = I18N[self.lang]
+        filename = getattr(self, '_current_filename', None)
+        if self.is_paused and filename:
+            self.lbl_wishlist_context.config(text=t["wishlist_ctx_paused"].format(save=filename))
+            self.lbl_wishlist_context.pack(fill='x', padx=15, pady=(0, 8), before=self.lbl_wishlist_search)
+        else:
+            self.lbl_wishlist_context.pack_forget()
+
     def log(self, text, tag=None, widget=None):
         target = widget if widget is not None else self.text_area
         target.config(state=tk.NORMAL)
@@ -785,11 +861,30 @@ class DigimonMonitorApp:
         target.config(state=tk.DISABLED)
         target.yview(1.0)
 
+    def log_lines(self, entries, widget=None):
+        """Insere várias linhas de uma vez, ligando/desligando o estado do widget e rolando a
+        tela só UMA vez no total — em vez de uma vez por linha (self.log). Essencial pra listas
+        grandes (centenas/milhares de linhas), onde o custo por linha do self.log() normal vira
+        o gargalo de performance. Cada item de 'entries' segue o mesmo formato aceito por self.log:
+        uma string, ou uma lista de tuplas (texto, tag) pra múltiplas cores na mesma linha."""
+        target = widget if widget is not None else self.text_area
+        target.config(state=tk.NORMAL)
+        for text, tag in entries:
+            if isinstance(text, list):
+                for pedaco, seg_tag in text:
+                    target.insert(tk.END, pedaco, seg_tag)
+                target.insert(tk.END, "\n")
+            else:
+                target.insert(tk.END, text + "\n", tag)
+        target.config(state=tk.DISABLED)
+        target.yview(1.0)
+
     def update_summary_panel(self, count_party, count_box, count_farm, total_alerts, total_almost, total_lv99, total_protected, t, loc_lbl):
         """Preenche o painel de Resumo na barra lateral: ocupação de Party/Box/Fazenda (labels grandes) + resumo de pendências (texto)."""
         self.lbl_party_count.config(text=f"{loc_lbl['PARTY']}: {count_party}/6")
         self.lbl_box_count.config(text=f"{loc_lbl['BOX']}: {count_box}/999")
         self.lbl_farm_count.config(text=f"{loc_lbl['FAZENDA']}: {count_farm}/30")
+        self.lbl_total_count.config(text=f"TOTAL: {count_party + count_box + count_farm}")
 
         self.summary_text.config(state=tk.NORMAL)
         self.summary_text.delete(1.0, tk.END)
@@ -806,6 +901,48 @@ class DigimonMonitorApp:
                 self.log(f" -> {total_lv99}{t['summary_lv99']}", "loc_fazenda", widget=self.summary_text)
             if total_protected > 0:
                 self.log(f" -> {total_protected}{t['summary_protected']}", "status", widget=self.summary_text)
+
+    def get_quase_button_label(self, t):
+        if self.quase_list_max_count == 0:
+            return t["btn_quase_show_until_all"]
+        if self.quase_list_max_count == QUASE_LIST_CYCLE[0]:
+            return t["btn_quase_show_until_10"]
+        if self.quase_list_max_count == QUASE_LIST_CYCLE[1]:
+            return t["btn_quase_show_until_30"]
+        return t["btn_quase_show_until_custom"].format(count=self.quase_list_max_count)
+
+    def cycle_quase_max_count(self, filepath, filename):
+        current = self.quase_list_max_count
+        cycle = QUASE_LIST_CYCLE
+        if current in cycle:
+            idx = cycle.index(current)
+            next_idx = (idx + 1) % len(cycle)
+            self.quase_list_max_count = cycle[next_idx]
+        else:
+            self.quase_list_max_count = cycle[0]
+        self.quase_limit_entry_var.set("")
+        self.save_config()
+        self.process_save(filepath, filename)
+
+    def apply_quase_limit_from_entry(self, filepath, filename, event=None):
+        value = self.quase_limit_entry_var.get().strip()
+        if value == "":
+            self.quase_list_max_count = 0
+        elif value.isdigit():
+            count = int(value)
+            self.quase_list_max_count = 0 if count <= 0 else count
+        else:
+            messagebox.showwarning(I18N[self.lang]["msg_warning_title"], I18N[self.lang]["msg_quase_invalid_count"])
+            return
+        self.save_config()
+        self.process_save(filepath, filename)
+
+    def apply_quase_filters(self, filepath, filename):
+        self.quase_filter_location = self.quase_filter_loc_var.get()
+        self.quase_filter_protected = self.quase_filter_protected_var.get()
+        self.quase_filter_wishlist = self.quase_filter_wishlist_var.get()
+        self.save_config()
+        self.process_save(filepath, filename)
 
     def on_mode_change(self):
         self.is_paused = False
@@ -835,6 +972,7 @@ class DigimonMonitorApp:
         self.btn_resume.config(bg="#8B0000") 
         self.save_combo.selection_clear()
         self.root.focus_set()
+        self.update_wishlist_context_label()
 
     def get_target_save(self):
         if not self.save_dir or not os.path.exists(self.save_dir):
@@ -854,7 +992,7 @@ class DigimonMonitorApp:
                     
         return latest_file, max_mtime
         
-    def calculate_almost_data(self, data, name_offset, name, level, talent, loc, protected):
+    def calculate_almost_data(self, data, name_offset, name, level, talent, loc, protected, uid, is_almost):
         digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
         current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
         
@@ -864,19 +1002,10 @@ class DigimonMonitorApp:
         faltam = exp_alvo - current_exp
         
         progresso_total = exp_alvo - exp_base
-        progresso_atual = current_exp - exp_base
-        
-        porcentagem = 0
-        if progresso_total > 0:
-            porcentagem = max(0, min(1, progresso_atual / progresso_total))
-            
-        bar_length = 10
-        filled = int(porcentagem * bar_length)
-        bar_str = ("█" * filled) + ("░" * (bar_length - filled))
-        
+        bar_str = self.build_progress_bar(faltam, progresso_total)
         faltam_str = f"{faltam:,}".replace(",", ".")
         
-        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected)
+        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected, uid, is_almost)
 
     def process_save(self, filepath, filename):
         self._current_filepath = filepath
@@ -912,7 +1041,7 @@ class DigimonMonitorApp:
         alerts = {"PARTY": [], "BOX": [], "FAZENDA": []}
         lv99_list = {"PARTY": [], "BOX": [], "FAZENDA": []} 
         almost_list = [] 
-        protected_list = []
+        remaining_list = []
         total_alerts, total_almost, total_lv99, total_protected = 0, 0, 0, 0 
         
         count_party = 0
@@ -956,12 +1085,10 @@ class DigimonMonitorApp:
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                 protected = self.read_digimon_protected(data, name_offset)
-
-                talent = talent_raw // 1000 if talent_raw >= 1000 else 1
-                if talent > 99: talent = 99
+                talent_for_dict = min(talent_raw // 1000, 99) if talent_raw >= 1000 else 1
 
                 active_digimons[("FAZENDA", i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected, 'talent': talent
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected, 'talent': talent_for_dict
                 }
 
                 if talent_raw >= 1000:
@@ -975,15 +1102,15 @@ class DigimonMonitorApp:
                         alerts["FAZENDA"].append((name, level, talent, protected))
                         total_alerts += 1
                     elif level == talent - 1:
-                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected)
+                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, True)
                         almost_list.append(almost_data)
                         total_almost += 1
+                    elif level < talent - 1:
+                        remaining_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, False)
+                        if remaining_data[3] > 0:
+                            remaining_list.append(remaining_data)
 
                     if protected:
-                        p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected)
-                        if p_faltam <= 0:
-                            p_faltam, p_faltam_str, p_bar = 0, "0", "█" * 10
-                        protected_list.append((p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot))
                         total_protected += 1
 
         regions = [("PARTY", 0x12C8 - 0x10, 0x10, 6), ("BOX", 0x1AA8 - 0x10, 0x10, 999)]
@@ -1016,12 +1143,10 @@ class DigimonMonitorApp:
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                 protected = self.read_digimon_protected(data, name_offset)
-
-                talent = talent_raw // 1000 if talent_raw >= 1000 else 1
-                if talent > 99: talent = 99
+                talent_for_dict = min(talent_raw // 1000, 99) if talent_raw >= 1000 else 1
 
                 active_digimons[(loc, i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected, 'talent': talent
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected, 'talent': talent_for_dict
                 }
 
                 if talent_raw >= 1000:
@@ -1035,15 +1160,15 @@ class DigimonMonitorApp:
                         alerts[loc].append((name, level, talent, protected))
                         total_alerts += 1
                     elif level == talent - 1:
-                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected)
+                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, True)
                         almost_list.append(almost_data)
                         total_almost += 1
+                    elif level < talent - 1:
+                        remaining_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, False)
+                        if remaining_data[3] > 0:
+                            remaining_list.append(remaining_data)
 
                     if protected:
-                        p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected)
-                        if p_faltam <= 0:
-                            p_faltam, p_faltam_str, p_bar = 0, "0", "█" * 10
-                        protected_list.append((p_name, p_level, p_talent, p_faltam, p_bar, p_faltam_str, p_loc, p_prot))
                         total_protected += 1
 
         # ==========================================
@@ -1056,6 +1181,7 @@ class DigimonMonitorApp:
         # de Readicionar / Remover. Só saem de vez quando o usuário confirma.
         # ==========================================
         self.active_digimons = active_digimons  # guarda pra os botões de Readicionar usarem depois
+        self.update_wishlist_context_label()
 
         wishlist_resolved = []   # [(w_idx, item, dig_info), ...] -> ainda existem no save, ativos
         wishlist_orphaned = []   # [(w_idx, item), ...] -> órfãos (já marcados, ou detectados agora)
@@ -1084,6 +1210,10 @@ class DigimonMonitorApp:
                         dig_info = candidates[0]
 
             if dig_info:
+                # Guarda de qual save esse Digimon foi visto pela última vez (só informativo, não trava mais nada)
+                if item.get('save') != filename:
+                    item['save'] = filename
+                    wishlist_state_changed = True
                 if item.get('uid') != dig_info.get('uid'):
                     item['uid'] = dig_info.get('uid', '')
                     wishlist_state_changed = True
@@ -1092,11 +1222,14 @@ class DigimonMonitorApp:
                     item['slot'] = dig_info['slot']
                     wishlist_state_changed = True
                 wishlist_resolved.append((w_idx, item, dig_info))
-            else:
-                # Digimon sumiu do save (evoluiu, foi deletado, ou o save mudou) -> vira órfão
+            elif not self.is_paused:
+                # Digimon sumiu do save que está sendo monitorado ao vivo (evoluiu, foi deletado,
+                # ou o save foi sobrescrito) -> vira órfão. Só faz isso durante monitoramento ao vivo —
+                # nunca enquanto o usuário está só inspecionando/dando uma olhada num save (is_paused=True).
                 item['orphaned'] = True
                 wishlist_orphaned.append((w_idx, item))
                 wishlist_state_changed = True
+            # else: pausado/inspecionando e não achou -> ignora silenciosamente neste ciclo, sem marcar nada.
 
         if wishlist_state_changed:
             self.save_config()
@@ -1122,11 +1255,7 @@ class DigimonMonitorApp:
                 wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc, w_protected))
             else:
                 prog_total = exp_target - exp_base
-                prog_atual = cur_exp - exp_base
-                pct = prog_atual / prog_total if prog_total > 0 else 0
-                pct = max(0.0, min(1.0, pct))
-                filled = int(pct * 10)
-                bar_str = ("█" * filled) + ("░" * (10 - filled))
+                bar_str = self.build_progress_bar(faltam, prog_total)
                 faltam_str = f"{faltam:,}".replace(",", ".")
                 wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc, w_protected))
 
@@ -1182,7 +1311,7 @@ class DigimonMonitorApp:
         self.update_summary_panel(count_party, count_box, count_farm, total_alerts, total_almost, total_lv99, total_protected, t, loc_lbl)
 
         # ==========================================
-        # LISTAS 2 a 5 — ORDEM CUSTOMIZÁVEL PELO USUÁRIO (setas ▲▼ no cabeçalho)
+        # LISTAS 2 a 4 — ORDEM CUSTOMIZÁVEL PELO USUÁRIO (setas ▲▼ no cabeçalho)
         # A ordem escolhida fica salva em self.list_order / config.json
         # ==========================================
 
@@ -1226,92 +1355,157 @@ class DigimonMonitorApp:
             self.text_area.config(state=tk.DISABLED)
 
         def render_almost_list(is_first, is_last):
-            if total_almost <= 0:
+            total_quase = len(almost_list) + len(remaining_list)
+            if total_quase <= 0:
                 return
-            render_header_with_controls(txt_quase, "almost", 'show_almost', 'btn_show_almost', 'almost', is_first, is_last)
+            render_header_with_controls(txt_quase, "header_yellow", 'show_almost', 'btn_show_almost', 'almost', is_first, is_last)
 
             if getattr(self, 'show_almost', False):
-                almost_list.sort(key=lambda x: x[3])
-                for name, level, talent, faltam_int, bar_str, faltam_str, loc, protected in almost_list:
-                    cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
-                    lock_icon = "🔒" if protected else "  "
-                    self.log([
-                        (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                        (f"{name:<12}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP", "status")
-                    ])
+                controls_frame = tk.Frame(self.text_area, bg=BG_COLOR)
+                btn_cycle = tk.Button(controls_frame, text=self.get_quase_button_label(t), command=lambda: self.cycle_quase_max_count(filepath, filename),
+                                      bg="#333333", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
+                btn_cycle.pack(side=tk.LEFT, padx=(0, 6))
 
-                # Botão para visualizar/ocultar a sublista enorme dos restantes
-                def toggle_remaining():
-                    self.show_remaining = not getattr(self, 'show_remaining', False)
-                    # Re-renderiza a tela atual
-                    self.process_save(filepath, filename)
+                lbl_until = tk.Label(controls_frame, text=t["lbl_quase_or_show_until"], bg=BG_COLOR, fg="white", font=("Consolas", 9))
+                lbl_until.pack(side=tk.LEFT, padx=(0, 4))
 
-                btn_label = t.get('btn_view_remaining') if not getattr(self, 'show_remaining', False) else t.get('btn_hide_remaining')
-                btn_toggle = tk.Button(self.text_area, text=btn_label, command=toggle_remaining,
-                                       bg="#333333", fg="white", font=("Consolas", 8, "bold"),
-                                       relief=tk.FLAT, cursor="hand2", padx=8, pady=0)
-                # Pula uma linha antes do botão
+                vcmd_quase_limit = (self.root.register(lambda p: p == "" or (p.isdigit() and len(p) <= 4)), '%P')
+                entry_limit = tk.Entry(controls_frame, textvariable=self.quase_limit_entry_var, validate="key", validatecommand=vcmd_quase_limit,
+                                        width=4, bg="#333333", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
+                entry_limit.pack(side=tk.LEFT, padx=(0, 4), ipady=2)
+                entry_limit.bind("<Return>", lambda event: self.apply_quase_limit_from_entry(filepath, filename, event))
+
+                btn_fetch = tk.Button(controls_frame, text=t["btn_quase_fetch"], command=lambda: self.apply_quase_limit_from_entry(filepath, filename),
+                                      bg="#444444", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
+                btn_fetch.pack(side=tk.LEFT)
+
+                filter_frame = tk.Frame(self.text_area, bg=BG_COLOR)
+                for option, label in [("TODOS", t["radio_all"]), ("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"])]:
+                    tk.Radiobutton(filter_frame, text=label, value=option, variable=self.quase_filter_loc_var,
+                                   command=lambda: self.apply_quase_filters(filepath, filename), bg=BG_COLOR, fg="white",
+                                   selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9),
+                                   cursor="hand2").pack(side=tk.LEFT, padx=(0, 10))
+
+                self.chk_quase_protected = tk.Checkbutton(
+                    filter_frame,
+                    text=t["checkbox_protected"],
+                    variable=self.quase_filter_protected_var,
+                    command=lambda: self.apply_quase_filters(filepath, filename),
+                    bg=BG_COLOR,
+                    fg="white",
+                    selectcolor=BTN_BG,
+                    activebackground=BG_COLOR,
+                    activeforeground="white",
+                    font=("Consolas", 9),
+                    cursor="hand2",
+                )
+                self.chk_quase_protected.pack(side=tk.LEFT, padx=(0, 10))
+
+                self.chk_quase_wishlist = tk.Checkbutton(
+                    filter_frame,
+                    text=t["checkbox_wishlist"],
+                    variable=self.quase_filter_wishlist_var,
+                    command=lambda: self.apply_quase_filters(filepath, filename),
+                    bg=BG_COLOR,
+                    fg="white",
+                    selectcolor=BTN_BG,
+                    activebackground=BG_COLOR,
+                    activeforeground="white",
+                    font=("Consolas", 9),
+                    cursor="hand2",
+                )
+                self.chk_quase_wishlist.pack(side=tk.LEFT, padx=(0, 10))
+                self.chk_quase_wishlist.bind("<Enter>", lambda event: self._show_quase_wishlist_hint(event, self._quase_wishlist_hint_text))
+                self.chk_quase_wishlist.bind("<Leave>", self._hide_quase_wishlist_hint)
+
+                self.text_area.config(state=tk.NORMAL)
+                self.text_area.window_create(tk.END, window=controls_frame)
                 self.text_area.insert(tk.END, "\n")
-                self.text_area.window_create(tk.END, window=btn_toggle)
-                # Pula uma linha depois do botão
+                self.text_area.window_create(tk.END, window=filter_frame)
                 self.text_area.insert(tk.END, "\n\n")
+                self.text_area.config(state=tk.DISABLED)
 
-                # Renderiza a sublista com todos os digimons restantes (quando ativa)
-                def render_remaining_sublist():
-                    if not getattr(self, 'show_remaining', False):
-                        return
+                combined_entries = []
+                for item in almost_list + remaining_list:
+                    name, level, talent, faltam_int, bar_str, faltam_str, loc, protected, uid, is_almost = item
+                    combined_entries.append({
+                        "name": name,
+                        "level": level,
+                        "goal_level": talent,
+                        "remaining": faltam_int,
+                        "bar_str": bar_str,
+                        "remaining_str": faltam_str,
+                        "loc": loc,
+                        "protected": protected,
+                        "uid_sort": int(uid, 16) if uid else 0,
+                        "is_almost": is_almost,
+                        "is_wishlist": False,
+                        "wishlist_idx": None,
+                    })
 
-                    # Construir lista de candidatos: todos os active_digimons que não estão em 'almost' e que ainda estão abaixo do talento
-                    remaining = []
-                    for key, cand in active_digimons.items():
-                        try:
-                            d_id = cand['id']
-                            lvl = cand['level']
-                            cur_exp = cand['exp']
-                            talent = cand.get('talent', 1)
-                        except Exception:
-                            continue
+                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected in wishlist_pending:
+                    combined_entries.append({
+                        "name": name,
+                        "level": level,
+                        "goal_level": target_lvl,
+                        "remaining": faltam_int,
+                        "bar_str": bar_str,
+                        "remaining_str": faltam_str,
+                        "loc": loc,
+                        "protected": protected,
+                        "uid_sort": w_idx,
+                        "is_almost": False,
+                        "is_wishlist": True,
+                        "wishlist_idx": w_idx,
+                    })
 
-                        # Excluir quem está na lista 'Quase lá' (level == talent - 1) e quem já atingiu/ultrapassou o talento
-                        if talent <= 1:
-                            continue
-                        if lvl == talent - 1:
-                            continue
-                        if lvl >= talent:
-                            continue
+                combined_entries.sort(key=lambda x: (x["remaining"], -x["goal_level"], x["name"].lower(), 0 if x["protected"] else 1, x["uid_sort"]))
+                filtered = []
+                for entry in combined_entries:
+                    if self.quase_filter_location != "TODOS" and self.quase_filter_location != entry["loc"]:
+                        continue
+                    if self.quase_filter_protected and not entry["protected"]:
+                        continue
+                    if not self.quase_filter_wishlist and entry["is_wishlist"]:
+                        continue
+                    filtered.append(entry)
 
-                        exp_alvo = get_exp_needed(d_id, talent)
-                        exp_base = get_exp_needed(d_id, lvl)
-                        faltam = exp_alvo - cur_exp
-                        progresso_total = exp_alvo - exp_base
-                        progresso_atual = cur_exp - exp_base
-                        porcentagem = 0
-                        if progresso_total > 0:
-                            porcentagem = max(0, min(1, progresso_atual / progresso_total))
-                        filled = int(porcentagem * 10)
-                        bar_str = ("█" * filled) + ("░" * (10 - filled))
-                        faltam_str = f"{faltam:,}".replace(",", ".")
-                        remaining.append((faltam, cand['name'], lvl, talent, bar_str, faltam_str, cand['loc'], cand.get('protected', False)))
+                if self.quase_list_max_count > 0:
+                    filtered = filtered[:self.quase_list_max_count]
 
-                    remaining.sort(key=lambda x: (x[0], x[1]))
-
-                    # Exibir sumário e linhas (pode ser grande)
+                if filtered:
                     self.text_area.config(state=tk.NORMAL)
-                    self.text_area.insert(tk.END, f"--- {len(remaining)} digimon(s) restantes ---\n", "status")
-                    for faltam, name, lvl, talent, bar_str, faltam_str, loc, protected in remaining:
-                        cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
-                        lock_icon = "🔒" if protected else "  "
-                        self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
-                        self.text_area.insert(tk.END, f"{name:<12}{lock_icon} ({t['lvl_abbr']} {lvl:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP\n", "status")
-                    self.text_area.insert(tk.END, "\n")
+                    for entry in filtered:
+                        cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[entry["loc"]]
+                        lock_icon = "🔒" if entry["protected"] else "  "
+                        goal_label = t["target_abbr"] if entry["is_wishlist"] else t["limite_abbr"]
+                        self.text_area.insert(tk.END, f" [{loc_lbl[entry['loc']]:^7}] ", cor_tag)
+                        
+                        
+                        # --- TRUNCAMENTO INTELIGENTE ---
+                        raw_name = entry['name']
+                        name_str = raw_name if len(raw_name) <= MAX_NAME_LEN else raw_name[:MAX_NAME_LEN - 3] + "..."
+                        # -------------------------------
+        
+                        # line_text = f"{lock_icon} {entry['name']:<11} ({t['lvl_abbr']} {entry['level']:02d} / {goal_label} {entry['goal_level']:02d}) [{entry['bar_str']}] {t['faltam_abbr']} {entry['remaining_str']:>7} EXP "
+                        line_text = f"{lock_icon} {name_str:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {entry['level']:02d} / {goal_label:<6} {entry['goal_level']:02d}) [{entry['bar_str']}] {t['faltam_abbr']} {entry['remaining_str']:>7} EXP "
+                        line_tag = "almost" if entry["is_almost"] else "status"
+                        self.text_area.insert(tk.END, line_text, line_tag)
+                        if entry["is_wishlist"] and entry.get("wishlist_idx") is not None:
+                            btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=entry["wishlist_idx"]: self.delete_wishlist_item(idx),
+                                                bg="#444444", fg="red", font=("Consolas", 8, "bold"),
+                                                relief=tk.FLAT, cursor="hand2", padx=2, pady=0)
+                            self.text_area.window_create(tk.END, window=btn_del)
+                        self.text_area.insert(tk.END, "\n")
                     self.text_area.config(state=tk.DISABLED)
-
-                render_remaining_sublist()
+                    self.text_area.yview(1.0)
+                else:
+                    self.log(t.get('msg_quase_no_results', t.get('msg_all_normal', '    Todos os Digimons estao evoluindo normalmente.')), 'status')
 
         def render_lv99_list(is_first, is_last):
             if total_lv99 <= 0:
                 return
-            render_header_with_controls(t["lbl_lv99_title"], "loc_fazenda", 'show_lv99', 'btn_show_lv99', 'lv99', is_first, is_last)
+            render_header_with_controls(t["lbl_lv99_title"], "header_green", 'show_lv99', 'btn_show_lv99', 'lv99', is_first, is_last)
 
             if getattr(self, 'show_lv99', False):
                 for loc in ["PARTY", "BOX", "FAZENDA"]:
@@ -1321,7 +1515,8 @@ class DigimonMonitorApp:
                         lock_icon = "🔒" if protected else "  "
                         self.log([
                             (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                            (f"{name:<16}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
+                            #(f"{lock_icon} {name:<15} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
+                            (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
                         ])
 
         def render_wishlist_list(is_first, is_last):
@@ -1330,7 +1525,7 @@ class DigimonMonitorApp:
             wishlist_pending.sort(key=lambda x: x[0])  # Ordena da menor EXP para a maior
 
             wishlist_title_text = t.get("wishlist_title", " 🎯 WISHLIST / METAS DE EVOLUÇÃO:")
-            render_header_with_controls(wishlist_title_text, "header", 'show_wishlist', 'btn_show_wishlist', 'wishlist', is_first, is_last)
+            render_header_with_controls(wishlist_title_text, "header_orange", 'show_wishlist', 'btn_show_wishlist', 'wishlist', is_first, is_last)
 
             if getattr(self, 'show_wishlist', False):
                 for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected in wishlist_pending:
@@ -1340,7 +1535,8 @@ class DigimonMonitorApp:
                     self.text_area.config(state=tk.NORMAL)
                     self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
 
-                    msg = f"{name:<12}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
+                    # msg = f"{lock_icon} {name:<11} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
+                    msg = f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
                     self.text_area.insert(tk.END, msg, "status")
 
                     # Botão Deletar Inline [X]
@@ -1351,26 +1547,6 @@ class DigimonMonitorApp:
                     self.text_area.window_create(tk.END, window=btn_del)
                     self.text_area.insert(tk.END, "\n")
                     self.text_area.config(state=tk.DISABLED)
-
-        def render_protected_list(is_first, is_last):
-            if total_protected <= 0:
-                return
-            protected_list.sort(key=lambda x: x[3])  # Ordena da menor EXP faltando para a maior
-            render_header_with_controls(t["protected_list_title"], "header_orange", 'show_protected', 'btn_show_protected', 'protected', is_first, is_last)
-
-            if getattr(self, 'show_protected', False):
-                for name, level, talent, faltam_int, bar_str, faltam_str, loc, protected in protected_list:
-                    cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
-                    if level >= talent:
-                        self.log([
-                            (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                            (f"🔒 {name:<12} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
-                        ])
-                    else:
-                        self.log([
-                            (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                            (f"🔒 {name:<12} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP", "status")
-                        ])
 
         def render_reached_cap_section():
             if not reached_rows:
@@ -1386,7 +1562,8 @@ class DigimonMonitorApp:
                     lock_icon = "🔒" if protected else "  "
                     self.log([
                         (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                        (f"{name:<16}{lock_icon} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
+                        #(f"{lock_icon} {name:<15} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
+                        (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
                     ])
                 else:
                     w_idx, w_name, w_level, w_target, w_protected = entry_data
@@ -1394,7 +1571,8 @@ class DigimonMonitorApp:
                     w_lock_icon = "🔒" if w_protected else "  "
                     self.text_area.config(state=tk.NORMAL)
                     self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
-                    self.text_area.insert(tk.END, f"{w_name:<16}{w_lock_icon} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_atingiu} ", "status")
+                    #self.text_area.insert(tk.END, f"{w_lock_icon} {w_name:<15} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_atingiu} ", "status")
+                    self.text_area.insert(tk.END, f"{w_lock_icon} {w_name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_atingiu} ", "status")
                     btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
                                         bg="#444444", fg="red", font=("Consolas", 8, "bold"),
                                         relief=tk.FLAT, cursor="hand2", padx=2, pady=0)
@@ -1406,7 +1584,6 @@ class DigimonMonitorApp:
             'almost': render_almost_list,
             'lv99': render_lv99_list,
             'wishlist': render_wishlist_list,
-            'protected': render_protected_list,
         }
 
         order = self.get_normalized_list_order()
@@ -1416,7 +1593,7 @@ class DigimonMonitorApp:
             sections_rendered += 1
 
         for idx, key in enumerate(order):
-            if key == 'almost' and total_almost > 0:
+            if key == 'almost' and (len(almost_list) + len(remaining_list)) > 0:
                 if sections_rendered > 0:
                     append_section_divider()
                 renderers[key](idx == 0, idx == len(order) - 1)
@@ -1427,11 +1604,6 @@ class DigimonMonitorApp:
                 renderers[key](idx == 0, idx == len(order) - 1)
                 sections_rendered += 1
             elif key == 'wishlist' and wishlist_pending:
-                if sections_rendered > 0:
-                    append_section_divider()
-                renderers[key](idx == 0, idx == len(order) - 1)
-                sections_rendered += 1
-            elif key == 'protected' and total_protected > 0:
                 if sections_rendered > 0:
                     append_section_divider()
                 renderers[key](idx == 0, idx == len(order) - 1)
