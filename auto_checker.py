@@ -51,7 +51,7 @@ PANEL_BG = "#1E1E1E"
 BTN_BG = "#333333"
 
 # Ciclo de limites para a lista "Quase lá": altere apenas os dois primeiros valores se quiser mudar o ciclo.
-QUASE_LIST_CYCLE = [14, 34, 0]  # 0 = mostrar todos
+QUASE_LIST_CYCLE = [12, 32, 0]  # 0 = mostrar todos
 
 # A faixa fixa da barrinha vai até quanto de xp? Altere aqui.
 MAX_LEVEL_BARRA = 35000
@@ -109,6 +109,7 @@ I18N = {
         "btn_quase_show_until_custom": "Show up to {count} Digimons",
         "msg_quase_invalid_count": "Enter a valid number for the amount.",
         "lbl_quase_or_show_until": "or Show up to:",
+        "lbl_quase_search": "Search Digimon:",
         "btn_quase_fetch": "🔍 Search",
         "radio_all": "All",
         "radio_party": "Party",
@@ -225,6 +226,7 @@ I18N = {
         "btn_quase_show_until_custom": "Mostrar até {count} Digimons",
         "msg_quase_invalid_count": "Digite um número válido para a quantidade.",
         "lbl_quase_or_show_until": "ou Mostrar até:",
+        "lbl_quase_search": "Pesquisar Digimon:",
         "btn_quase_fetch": "🔍 Buscar",
         "radio_all": "Todos",
         "radio_party": "Party",
@@ -514,6 +516,10 @@ class DigimonMonitorApp:
 
         # ATALHO: Funcionar ao pressionar Enter no teclado
         self.entry_wish_id.bind("<Return>", lambda event: self.search_wishlist_digimon())
+        # Busca ao vivo: filtra a cada tecla digitada (autocomplete), e seta pra baixo já
+        # manda o foco pro dropdown de resultados pra navegar/confirmar com Enter.
+        self.entry_wish_id.bind("<KeyRelease>", self.on_wishlist_query_keyrelease)
+        self.entry_wish_id.bind("<Down>", self.on_wishlist_query_down)
 
         self.btn_wish_search = tk.Button(control_frame, text=I18N[self.lang]["wishlist_search_btn"], command=self.search_wishlist_digimon, bg="#555555", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2")
         self.btn_wish_search.pack(fill='y', padx=15, pady=(5, 6), ipady=2)
@@ -620,6 +626,9 @@ class DigimonMonitorApp:
         self.quase_filter_protected_var = tk.BooleanVar(value=self.quase_filter_protected)
         self.quase_filter_wishlist_var = tk.BooleanVar(value=self.quase_filter_wishlist)
         self.quase_limit_entry_var = tk.StringVar()
+        self.quase_search_var = tk.StringVar()
+        self.quase_search_text = ""  # busca ao vivo da Quase Lá — só de sessão, não persiste no config.json
+        self._quase_search_after_id = None
         self._quase_wishlist_hint_text = I18N[self.lang]["checkbox_wishlist_help"]
 
         self.update_wishlist_context_label()
@@ -667,19 +676,26 @@ class DigimonMonitorApp:
         filled = max(0, min(length, filled))
         return ("█" * filled) + ("░" * (length - filled))
 
-    def search_wishlist_digimon(self):
+    def search_wishlist_digimon(self, silent=False):
         """Busca o Digimon pelo ID ou pelo Nome dentro do que já foi lido do save atualmente carregado
-        (seja pelo monitoramento ao vivo, seja pelo 'Inspecionar Save' pausado) — sem reler/redescriptografar nada."""
+        (seja pelo monitoramento ao vivo, seja pelo 'Inspecionar Save' pausado) — sem reler/redescriptografar nada.
+        silent=True: usado pela busca ao vivo (a cada tecla digitada) — não mostra popups de aviso/sem resultado."""
         t = I18N[self.lang]
         loc_lbl = t["loc_labels"]
         query_text = self.entry_wish_id.get().strip()
         if not query_text:
-            messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_empty_query"])
+            if not silent:
+                messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_empty_query"])
+            self.combo_wish_results['values'] = []
+            self.combo_wish_results.set("")
+            self.search_results_map = []
+            self.lbl_wishlist_result_count.config(text="")
             return
 
         active = getattr(self, 'active_digimons', None)
         if not active:
-            messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_no_save"])
+            if not silent:
+                messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_no_save"])
             return
 
         is_id_search = query_text.isdigit()
@@ -715,11 +731,30 @@ class DigimonMonitorApp:
             self.combo_wish_results.current(0)
             result_word = "resultado" if len(combo_options) == 1 else "resultados"
             self.lbl_wishlist_result_count.config(text=f"{len(combo_options)} {result_word}")
+            # if silent:
+            #     # Autocomplete ao vivo: abre o dropdown automaticamente pra mostrar as sugestões
+            #     self.combo_wish_results.event_generate('<Down>')
         else:
             self.combo_wish_results['values'] = []
             self.combo_wish_results.set("")
             self.lbl_wishlist_result_count.config(text="0 resultados")
-            messagebox.showinfo(t["msg_search_title"], t["wishlist_no_results"].format(query=query_text))
+            if not silent:
+                messagebox.showinfo(t["msg_search_title"], t["wishlist_no_results"].format(query=query_text))
+
+    def on_wishlist_query_keyrelease(self, event=None):
+        """Busca ao vivo: dispara a cada tecla digitada (é barata, só filtra dados que já
+        estão em memória — não relê nem redescriptografa nada). Teclas de navegação passam direto."""
+        if event and event.keysym in ('Up', 'Down', 'Return', 'Escape', 'Tab'):
+            return
+        self.search_wishlist_digimon(silent=True)
+
+    def on_wishlist_query_down(self, event=None):
+        """Seta pra baixo no campo de busca: manda o foco pro dropdown de resultados e já abre
+        a lista, pra poder navegar com as setas e confirmar com Enter."""
+        if self.combo_wish_results['values']:
+            self.combo_wish_results.focus_set()
+            self.combo_wish_results.event_generate('<Down>')
+        return "break"
 
     def add_wishlist_target(self):
         """Adiciona o Digimon selecionado à Wishlist com a meta de nível e salva no JSON."""
@@ -943,6 +978,39 @@ class DigimonMonitorApp:
         self.quase_filter_wishlist = self.quase_filter_wishlist_var.get()
         self.save_config()
         self.process_save(filepath, filename)
+
+    def on_quase_search_keyrelease(self, filepath, filename, event=None):
+        """Busca ao vivo dentro da lista Quase Lá. Como reaplicar o filtro exige reprocessar
+        o save inteiro (openssl + reescanear tudo), usamos um pequeno atraso ('debounce') pra
+        só disparar depois que o usuário parar de digitar por um instante — assim a digitação
+        continua fluida em vez de travar a cada tecla."""
+        if event and event.keysym in ('Up', 'Down', 'Return', 'Escape', 'Tab'):
+            return
+        if self._quase_search_after_id:
+            self.root.after_cancel(self._quase_search_after_id)
+        self._quase_search_after_id = self.root.after(350, lambda: self._commit_quase_search(filepath, filename))
+
+    def _commit_quase_search(self, filepath, filename):
+        self._quase_search_after_id = None
+        self.quase_search_text = self.quase_search_var.get()
+        if hasattr(self, '_current_filepath') and os.path.exists(self._current_filepath):
+            self.process_save(self._current_filepath, self._current_filename)
+        # process_save reconstrói a tela inteira (inclusive esse campo) — devolve o foco e o
+        # cursor pro fim do texto, senão o usuário perderia o foco a cada pausa na digitação.
+        if hasattr(self, 'entry_quase_search') and self.entry_quase_search.winfo_exists():
+            self.entry_quase_search.focus_set()
+            self.entry_quase_search.icursor(tk.END)
+
+    def clear_quase_search(self, filepath, filename):
+        """Enter no campo de busca da Quase Lá: limpa a busca por completo e volta a lista
+        ao tamanho normal, respeitando os outros filtros que continuarem ativos."""
+        if self._quase_search_after_id:
+            self.root.after_cancel(self._quase_search_after_id)
+            self._quase_search_after_id = None
+        self.quase_search_var.set("")
+        self.quase_search_text = ""
+        if hasattr(self, '_current_filepath') and os.path.exists(self._current_filepath):
+            self.process_save(self._current_filepath, self._current_filename)
 
     def on_mode_change(self):
         self.is_paused = False
@@ -1361,6 +1429,16 @@ class DigimonMonitorApp:
             render_header_with_controls(txt_quase, "header_yellow", 'show_almost', 'btn_show_almost', 'almost', is_first, is_last)
 
             if getattr(self, 'show_almost', False):
+                search_row = tk.Frame(self.text_area, bg=BG_COLOR)
+                lbl_search = tk.Label(search_row, text=t["lbl_quase_search"], bg=BG_COLOR, fg="white", font=("Consolas", 9))
+                lbl_search.pack(side=tk.LEFT, padx=(0, 6))
+
+                self.entry_quase_search = tk.Entry(search_row, textvariable=self.quase_search_var, width=28,
+                                                    bg="#333333", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
+                self.entry_quase_search.pack(side=tk.LEFT, ipady=2)
+                self.entry_quase_search.bind("<KeyRelease>", lambda event: self.on_quase_search_keyrelease(filepath, filename, event))
+                self.entry_quase_search.bind("<Return>", lambda event: self.clear_quase_search(filepath, filename))
+
                 controls_frame = tk.Frame(self.text_area, bg=BG_COLOR)
                 btn_cycle = tk.Button(controls_frame, text=self.get_quase_button_label(t), command=lambda: self.cycle_quase_max_count(filepath, filename),
                                       bg="#333333", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
@@ -1380,7 +1458,7 @@ class DigimonMonitorApp:
                 btn_fetch.pack(side=tk.LEFT)
 
                 filter_frame = tk.Frame(self.text_area, bg=BG_COLOR)
-                for option, label in [("TODOS", t["radio_all"]), ("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"])]:
+                for option, label in [("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"]), ("TODOS", t["radio_all"])]:
                     tk.Radiobutton(filter_frame, text=label, value=option, variable=self.quase_filter_loc_var,
                                    command=lambda: self.apply_quase_filters(filepath, filename), bg=BG_COLOR, fg="white",
                                    selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9),
@@ -1419,6 +1497,8 @@ class DigimonMonitorApp:
                 self.chk_quase_wishlist.bind("<Leave>", self._hide_quase_wishlist_hint)
 
                 self.text_area.config(state=tk.NORMAL)
+                self.text_area.window_create(tk.END, window=search_row)
+                self.text_area.insert(tk.END, "\n")
                 self.text_area.window_create(tk.END, window=controls_frame)
                 self.text_area.insert(tk.END, "\n")
                 self.text_area.window_create(tk.END, window=filter_frame)
@@ -1460,6 +1540,7 @@ class DigimonMonitorApp:
                     })
 
                 combined_entries.sort(key=lambda x: (x["remaining"], -x["goal_level"], x["name"].lower(), 0 if x["protected"] else 1, x["uid_sort"]))
+                search_text = getattr(self, 'quase_search_text', '').strip().lower()
                 filtered = []
                 for entry in combined_entries:
                     if self.quase_filter_location != "TODOS" and self.quase_filter_location != entry["loc"]:
@@ -1467,6 +1548,8 @@ class DigimonMonitorApp:
                     if self.quase_filter_protected and not entry["protected"]:
                         continue
                     if not self.quase_filter_wishlist and entry["is_wishlist"]:
+                        continue
+                    if search_text and search_text not in entry["name"].lower():
                         continue
                     filtered.append(entry)
 
