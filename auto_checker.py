@@ -51,7 +51,7 @@ PANEL_BG = "#1E1E1E"
 BTN_BG = "#333333"
 
 # Ciclo de limites para a lista "Quase lá": altere apenas os dois primeiros valores se quiser mudar o ciclo.
-QUASE_LIST_CYCLE = [12, 32, 0]  # 0 = mostrar todos
+QUASE_LIST_CYCLE = [14, 34, 0]  # 0 = mostrar todos
 
 # A faixa fixa da barrinha vai até quanto de xp? Altere aqui.
 MAX_LEVEL_BARRA = 35000
@@ -514,12 +514,22 @@ class DigimonMonitorApp:
         self.entry_wish_id = tk.Entry(control_frame, bg="#333333", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
         self.entry_wish_id.pack(fill='x', padx=15, pady=(0, 4), ipady=2)
 
-        # ATALHO: Funcionar ao pressionar Enter no teclado
-        self.entry_wish_id.bind("<Return>", lambda event: self.search_wishlist_digimon())
-        # Busca ao vivo: filtra a cada tecla digitada (autocomplete), e seta pra baixo já
-        # manda o foco pro dropdown de resultados pra navegar/confirmar com Enter.
+        # Autocomplete flutuante: dropdown próprio que aparece embaixo do campo enquanto
+        # digita, sem nunca tirar o foco do campo de texto (ver os métodos on_wishlist_query_*).
+        self._wish_ac_popup = None
+        self._wish_ac_listbox = None
+        self._wish_ac_index = -1
+        self._wish_ac_results = []
+        self._wish_ac_options = []
+
         self.entry_wish_id.bind("<KeyRelease>", self.on_wishlist_query_keyrelease)
         self.entry_wish_id.bind("<Down>", self.on_wishlist_query_down)
+        self.entry_wish_id.bind("<Up>", self.on_wishlist_query_up)
+        self.entry_wish_id.bind("<Return>", self.on_wishlist_query_return)
+        self.entry_wish_id.bind("<Escape>", self.on_wishlist_query_escape)
+        # Clicar fora do campo fecha o dropdown (pequeno atraso pra dar tempo do clique
+        # num item da lista ser processado antes de fecharmos ela).
+        self.entry_wish_id.bind("<FocusOut>", lambda event: self.root.after(150, self.close_wish_autocomplete))
 
         self.btn_wish_search = tk.Button(control_frame, text=I18N[self.lang]["wishlist_search_btn"], command=self.search_wishlist_digimon, bg="#555555", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2")
         self.btn_wish_search.pack(fill='y', padx=15, pady=(5, 6), ipady=2)
@@ -676,27 +686,12 @@ class DigimonMonitorApp:
         filled = max(0, min(length, filled))
         return ("█" * filled) + ("░" * (length - filled))
 
-    def search_wishlist_digimon(self, silent=False):
-        """Busca o Digimon pelo ID ou pelo Nome dentro do que já foi lido do save atualmente carregado
-        (seja pelo monitoramento ao vivo, seja pelo 'Inspecionar Save' pausado) — sem reler/redescriptografar nada.
-        silent=True: usado pela busca ao vivo (a cada tecla digitada) — não mostra popups de aviso/sem resultado."""
+    def _compute_wishlist_matches(self, query_text):
+        """Filtra self.active_digimons pelo texto digitado (ID exato ou substring do nome).
+        Retorna (results_map, combo_options) — puro, sem tocar em nenhum widget."""
         t = I18N[self.lang]
         loc_lbl = t["loc_labels"]
-        query_text = self.entry_wish_id.get().strip()
-        if not query_text:
-            if not silent:
-                messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_empty_query"])
-            self.combo_wish_results['values'] = []
-            self.combo_wish_results.set("")
-            self.search_results_map = []
-            self.lbl_wishlist_result_count.config(text="")
-            return
-
-        active = getattr(self, 'active_digimons', None)
-        if not active:
-            if not silent:
-                messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_no_save"])
-            return
+        active = getattr(self, 'active_digimons', None) or {}
 
         is_id_search = query_text.isdigit()
         search_id = int(query_text) if is_id_search else None
@@ -708,32 +703,54 @@ class DigimonMonitorApp:
             return search_name in d_name.lower()
 
         current_save = getattr(self, '_current_filename', '')
-        self.search_results_map = []
+        results_map = []
         for info in active.values():
             if match_criteria(info['id'], info['name']):
                 entry = dict(info)
                 entry['save'] = current_save
-                self.search_results_map.append(entry)
+                results_map.append(entry)
 
-        if self.search_results_map:
+        if results_map:
             def sort_wishlist_result(info):
                 level_exp, _ = self.get_level_exp_progress(info['id'], info['level'], info['exp'])
                 return (info['level'], level_exp, info['talent'])
+            results_map.sort(key=sort_wishlist_result, reverse=True)
 
-            self.search_results_map.sort(key=sort_wishlist_result, reverse=True)
-            combo_options = []
-            for info in self.search_results_map:
-                exp_str = self.get_level_exp_display(info['id'], info['level'], info['exp'])
-                lock_icon = "🔒 " if info.get('protected') else ""
-                combo_options.append(f"{lock_icon}{info['name']} [{loc_lbl[info['loc']]}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
+        combo_options = []
+        for info in results_map:
+            exp_str = self.get_level_exp_display(info['id'], info['level'], info['exp'])
+            lock_icon = "🔒 " if info.get('protected') else ""
+            combo_options.append(f"{lock_icon}{info['name']} [{loc_lbl[info['loc']]}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
 
+        return results_map, combo_options
+
+    def search_wishlist_digimon(self, silent=False):
+        """Busca explícita (botão 'Buscar' ou Enter sem o dropdown aberto): preenche a
+        combobox de resultado com TODOS os achados. Não usada mais pela digitação ao vivo
+        (essa agora usa o dropdown flutuante — ver on_wishlist_query_keyrelease)."""
+        t = I18N[self.lang]
+        query_text = self.entry_wish_id.get().strip()
+        if not query_text:
+            if not silent:
+                messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_empty_query"])
+            self.combo_wish_results['values'] = []
+            self.combo_wish_results.set("")
+            self.search_results_map = []
+            self.lbl_wishlist_result_count.config(text="")
+            return
+
+        if not getattr(self, 'active_digimons', None):
+            if not silent:
+                messagebox.showwarning(t["msg_warning_title"], t["wishlist_err_no_save"])
+            return
+
+        self.search_results_map, combo_options = self._compute_wishlist_matches(query_text)
+
+        if combo_options:
             self.combo_wish_results['values'] = combo_options
             self.combo_wish_results.current(0)
             result_word = "resultado" if len(combo_options) == 1 else "resultados"
             self.lbl_wishlist_result_count.config(text=f"{len(combo_options)} {result_word}")
-            # if silent:
-            #     # Autocomplete ao vivo: abre o dropdown automaticamente pra mostrar as sugestões
-            #     self.combo_wish_results.event_generate('<Down>')
         else:
             self.combo_wish_results['values'] = []
             self.combo_wish_results.set("")
@@ -741,20 +758,119 @@ class DigimonMonitorApp:
             if not silent:
                 messagebox.showinfo(t["msg_search_title"], t["wishlist_no_results"].format(query=query_text))
 
+    # ==========================================
+    # AUTOCOMPLETE FLUTUANTE DA WISHLIST
+    # Um dropdown próprio (não é a combobox nativa) que aparece embaixo do campo de busca
+    # enquanto o usuário digita, sem NUNCA tirar o foco do campo — a combobox nativa do
+    # Tkinter rouba o foco assim que o dropdown dela abre, o que quebrava a digitação.
+    # ==========================================
+    WISH_AC_MAX_ROWS = 12
+
     def on_wishlist_query_keyrelease(self, event=None):
-        """Busca ao vivo: dispara a cada tecla digitada (é barata, só filtra dados que já
-        estão em memória — não relê nem redescriptografa nada). Teclas de navegação passam direto."""
         if event and event.keysym in ('Up', 'Down', 'Return', 'Escape', 'Tab'):
             return
-        self.search_wishlist_digimon(silent=True)
+        query_text = self.entry_wish_id.get().strip()
+        if not query_text or not getattr(self, 'active_digimons', None):
+            self.close_wish_autocomplete()
+            return
+        results_map, combo_options = self._compute_wishlist_matches(query_text)
+        if not combo_options:
+            self.close_wish_autocomplete()
+            return
+        self.show_wish_autocomplete(results_map[:self.WISH_AC_MAX_ROWS], combo_options[:self.WISH_AC_MAX_ROWS])
+
+    def show_wish_autocomplete(self, results_map, combo_options):
+        """Cria (se preciso) e preenche o dropdown flutuante, posicionado logo abaixo do
+        campo de busca. Não chama focus_set em nada — o foco continua no Entry."""
+        self._wish_ac_results = results_map
+        self._wish_ac_options = combo_options
+        self._wish_ac_index = 0
+
+        if self._wish_ac_popup is None or not self._wish_ac_popup.winfo_exists():
+            popup = tk.Toplevel(self.root)
+            popup.overrideredirect(True)
+            popup.attributes("-topmost", True)
+            listbox = tk.Listbox(popup, bg="#1E1E1E", fg="white", font=("Consolas", 9),
+                                  selectbackground="#1E90FF", selectforeground="white",
+                                  activestyle="none", relief=tk.FLAT, highlightthickness=1,
+                                  highlightbackground="#444444", bd=0, exportselection=False)
+            listbox.pack(fill=tk.BOTH, expand=True)
+            listbox.bind("<ButtonRelease-1>", self.on_wish_autocomplete_click)
+            self._wish_ac_popup = popup
+            self._wish_ac_listbox = listbox
+
+        x = self.entry_wish_id.winfo_rootx()
+        y = self.entry_wish_id.winfo_rooty() + self.entry_wish_id.winfo_height()
+        width = self.entry_wish_id.winfo_width()
+        row_h = 18
+        height = row_h * min(len(combo_options), self.WISH_AC_MAX_ROWS) + 6
+        self._wish_ac_popup.geometry(f"{width}x{height}+{x}+{y}")
+
+        self._wish_ac_listbox.delete(0, tk.END)
+        for option in combo_options:
+            self._wish_ac_listbox.insert(tk.END, f" {option}")
+        self._wish_ac_listbox.selection_clear(0, tk.END)
+        self._wish_ac_listbox.selection_set(0)
+        self._wish_ac_popup.deiconify()
+
+    def close_wish_autocomplete(self):
+        if getattr(self, '_wish_ac_popup', None) is not None and self._wish_ac_popup.winfo_exists():
+            self._wish_ac_popup.withdraw()
+        self._wish_ac_index = -1
 
     def on_wishlist_query_down(self, event=None):
-        """Seta pra baixo no campo de busca: manda o foco pro dropdown de resultados e já abre
-        a lista, pra poder navegar com as setas e confirmar com Enter."""
-        if self.combo_wish_results['values']:
-            self.combo_wish_results.focus_set()
-            self.combo_wish_results.event_generate('<Down>')
+        """Seta pra baixo: move o destaque dentro do dropdown flutuante SEM tirar o foco do campo."""
+        if self._wish_ac_popup is None or str(self._wish_ac_popup.state()) != "normal" or not getattr(self, '_wish_ac_options', None):
+            self.on_wishlist_query_keyrelease()  # nada aberto ainda: tenta abrir com o texto atual
+            return "break"
+        self._wish_ac_index = min(self._wish_ac_index + 1, len(self._wish_ac_options) - 1)
+        self._wish_ac_listbox.selection_clear(0, tk.END)
+        self._wish_ac_listbox.selection_set(self._wish_ac_index)
+        self._wish_ac_listbox.see(self._wish_ac_index)
         return "break"
+
+    def on_wishlist_query_up(self, event=None):
+        if self._wish_ac_popup is None or str(self._wish_ac_popup.state()) != "normal" or not getattr(self, '_wish_ac_options', None):
+            return "break"
+        self._wish_ac_index = max(self._wish_ac_index - 1, 0)
+        self._wish_ac_listbox.selection_clear(0, tk.END)
+        self._wish_ac_listbox.selection_set(self._wish_ac_index)
+        self._wish_ac_listbox.see(self._wish_ac_index)
+        return "break"
+
+    def on_wishlist_query_return(self, event=None):
+        """Enter: se o dropdown flutuante estiver aberto com algo destacado, confirma essa
+        escolha. Senão, cai pro comportamento antigo (busca explícita)."""
+        if self._wish_ac_popup is not None and str(self._wish_ac_popup.state()) == "normal" and getattr(self, '_wish_ac_options', None):
+            self.select_wish_autocomplete_index(self._wish_ac_index)
+        else:
+            self.search_wishlist_digimon()
+
+    def on_wishlist_query_escape(self, event=None):
+        self.close_wish_autocomplete()
+
+    def on_wish_autocomplete_click(self, event=None):
+        index = self._wish_ac_listbox.nearest(event.y)
+        self.select_wish_autocomplete_index(index)
+
+    def select_wish_autocomplete_index(self, index):
+        """Confirma a sugestão destacada: preenche a combobox de resultado (é o que
+        add_wishlist_target usa) e fecha o dropdown flutuante, sem nunca ter tirado
+        o foco do campo de texto durante a digitação."""
+        options = getattr(self, '_wish_ac_options', [])
+        results = getattr(self, '_wish_ac_results', [])
+        if not options or not (0 <= index < len(options)):
+            return
+        self.search_results_map = results
+        self.combo_wish_results['values'] = options
+        self.combo_wish_results.current(index)
+        result_word = "resultado" if len(options) == 1 else "resultados"
+        self.lbl_wishlist_result_count.config(text=f"{len(options)} {result_word}")
+        self.entry_wish_id.delete(0, tk.END)
+        self.entry_wish_id.insert(0, results[index]['name'])
+        self.close_wish_autocomplete()
+        self.entry_wish_id.focus_set()
+        self.entry_wish_id.icursor(tk.END)
 
     def add_wishlist_target(self):
         """Adiciona o Digimon selecionado à Wishlist com a meta de nível e salva no JSON."""
@@ -1458,7 +1574,7 @@ class DigimonMonitorApp:
                 btn_fetch.pack(side=tk.LEFT)
 
                 filter_frame = tk.Frame(self.text_area, bg=BG_COLOR)
-                for option, label in [("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"]), ("TODOS", t["radio_all"])]:
+                for option, label in [("TODOS", t["radio_all"]), ("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"])]:
                     tk.Radiobutton(filter_frame, text=label, value=option, variable=self.quase_filter_loc_var,
                                    command=lambda: self.apply_quase_filters(filepath, filename), bg=BG_COLOR, fg="white",
                                    selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9),
