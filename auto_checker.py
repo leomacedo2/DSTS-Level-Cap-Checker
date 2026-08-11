@@ -2,9 +2,19 @@ import os
 import time
 import struct
 import subprocess
+import threading
+import re
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
+
+# xlwings é opcional: se não estiver instalado, o programa continua
+# funcionando normalmente, só sem a sincronização com o Excel.
+try:
+    import xlwings as xw
+    XLWINGS_AVAILABLE = True
+except ImportError:
+    XLWINGS_AVAILABLE = False
 
 # ==========================================
 # BANCO DE DADOS: IDS E CURVAS DE EXP
@@ -42,6 +52,31 @@ CONFIG_FILE = "config.json"
 AES_KEY = "33393632373736373534353535383833"
 DIGIMON_SIZE = 336
 
+# ==========================================
+# INTEGRAÇÃO COM EXCEL (xlwings)
+# ==========================================
+EXCEL_SYNC_ENABLED = False
+COMPARADOR_SYNC = False   # Se True, roda a comparação de Talento Ascendente ("Comparações_Talento") junto do sync.
+ALERT_MSG_SYNC = False   # Se True, pergunta antes de popular a aba de comparação. Se False, roda direto (sem caixa de alerta).
+
+# Caminho genérico de exemplo
+EXCEL_FILE_PATH = r"C:\caminho\para\sua\planilha.xlsm" 
+
+try:
+    from meus_segredos import MEU_CAMINHO_EXCEL
+    EXCEL_FILE_PATH = MEU_CAMINHO_EXCEL
+except ImportError:
+    pass  # Se o arquivo não existir, ignora e usa o caminho genérico acima
+
+EXCEL_SHEET_NAME = None      # None = usa a aba ativa do arquivo
+EXCEL_COL_NAME = 6           # Coluna F (nome do Digimon)
+EXCEL_COL_ASCENDANT = 22     # Coluna V (ascendant_talent_raw)
+EXCEL_HEADER_ROW = 1         # Primeira linha considerada dado (pule se tiver cabeçalho maior)
+
+# Aba auxiliar que guarda o histórico de talento ascendente ao longo do tempo,
+# pra ajudar a entender como esse status se comporta.
+EXCEL_COMPARISON_SHEET_NAME = "Comparações_Talento"
+
 # CORES DARK MODE
 BG_COLOR = "#121212"
 FG_COLOR = "#00FF00"  
@@ -51,13 +86,16 @@ PANEL_BG = "#1E1E1E"
 BTN_BG = "#333333"
 
 # Ciclo de limites para a lista "Quase lá": altere apenas os dois primeiros valores se quiser mudar o ciclo.
-QUASE_LIST_CYCLE = [14, 34, 0]  # 0 = mostrar todos
+QUASE_LIST_CYCLE = [12, 32, 0]  # 0 = mostrar todos
 
 # A faixa fixa da barrinha vai até quanto de xp? Altere aqui.
 MAX_LEVEL_BARRA = 35000
 
 # A faixa de espaços para o truncamento inteligente de nomes para as barras ficarem alinhadas:
 MAX_NAME_LEN = 18
+
+# Numero de valores para a lista flutuante na textbox de busca da Wishlist
+VALORES_BUSCA = 40
 
 # ==========================================
 # DICIONÁRIO DE IDIOMAS (i18n)
@@ -71,6 +109,17 @@ I18N = {
         "modo_auto": "Automatic Mode",
         "modo_manual": "Manual Mode (Ignore auto-save)",
         "btn_change_folder": "📂 Change Save Folder",
+        "btn_sync_excel": "🔄 Sync Excel",
+        "btn_sync_excel_running": "🔄 Syncing...",
+        "msg_sync_excel_ok": "✅ Excel updated: ",
+        "msg_sync_excel_none": "ℹ️ No protected Digimon matched in the spreadsheet.",
+        "msg_sync_excel_disabled": "⚠️ Excel sync is disabled (EXCEL_SYNC_ENABLED = False).",
+        "msg_sync_excel_no_data": "⚠️ No save data loaded yet. Read a save first.",
+        "ask_sync_comparison_title": "Update comparison tab?",
+        "ask_sync_comparison_body": "Do you also want to update the \"Comparações_Talento\" tab with a new Ascendant Talent comparison round?",
+        "msg_comparison_created": " 📊 \"Comparações_Talento\" tab created and populated ({count}).",
+        "msg_comparison_updated": " 📊 Comparison round added to \"Comparações_Talento\" ({count} updated, {new} new).",
+        "msg_comparison_error": " ⚠️ [Comparison Sheet] Failed to update: ",
         "lbl_inspect": "Inspect Save:",
         "lbl_paused": "⚠️ PAUSED",
         "btn_resume": "RESUME TRACKING",
@@ -117,7 +166,7 @@ I18N = {
         "radio_farm": "Farm",
         "checkbox_protected": "Protected",
         "checkbox_wishlist": "Wishlist",
-        "checkbox_wishlist_help": "Include wishlist targets in the 'Almost there' list and compare them using the Target level.",
+        "checkbox_wishlist_help": "Include wishlist targets in the 'Almost there' list",
         "msg_quase_no_results": "No digimons match the applied filters.",
         "lbl_lv99_title": " 👑 DIGIMONS AT MAXIMUM LEVEL (99):",
         "waiting_msg": "\n[Waiting for game update... Keep this open on the 2nd screen]",
@@ -149,6 +198,9 @@ I18N = {
         "wishlist_readded_msg": "'{name}' is present in the current save again and was restored to the wishlist.",
         "wishlist_ctx_paused": "You can add Digimon from this save ({save}) to the Wishlist below:",
         "target_abbr": "Target",
+        "radio_sort_xp": "Least XP Remaining",
+        "radio_sort_acc": "Lower talent value Acc",
+        "lbl_obs_acc": "Note: The values ​​in braces {} on the lines represent the new talent value if you evolve the Digimon.",
         "loc_labels": {"PARTY": "PARTY", "BOX": "BOX", "FAZENDA": "FARM"}
     },
     "PT": {
@@ -159,6 +211,17 @@ I18N = {
         "modo_auto": "Modo Automático",
         "modo_manual": "Modo Manual (Ignora o Auto-Save)",
         "btn_change_folder": "📂 Mudar Pasta de Saves",
+        "btn_sync_excel": "🔄 Sincronizar Excel",
+        "btn_sync_excel_running": "🔄 Sincronizando...",
+        "msg_sync_excel_ok": "✅ Excel atualizado: ",
+        "msg_sync_excel_none": "ℹ️ Nenhum Digimon protegido encontrado na planilha.",
+        "msg_sync_excel_disabled": "⚠️ Sync com Excel está desativado (EXCEL_SYNC_ENABLED = False).",
+        "msg_sync_excel_no_data": "⚠️ Nenhum save carregado ainda. Leia um save primeiro.",
+        "ask_sync_comparison_title": "Atualizar aba de comparação?",
+        "ask_sync_comparison_body": "Deseja também atualizar a aba \"Comparações_Talento\" com uma nova rodada de comparação de Talento Ascendente?",
+        "msg_comparison_created": " 📊 Aba \"Comparações_Talento\" criada e populada ({count}).",
+        "msg_comparison_updated": " 📊 Rodada de comparação adicionada em \"Comparações_Talento\" ({count} atualizados, {new} novos).",
+        "msg_comparison_error": " ⚠️ [Aba de Comparação] Falha ao atualizar: ",
         "lbl_inspect": "Inspecionar Save:",
         "lbl_paused": "⚠️ PAUSADO",
         "btn_resume": "VOLTAR A RASTREAR",
@@ -234,8 +297,12 @@ I18N = {
         "radio_farm": "Fazenda",
         "checkbox_protected": "Protegidos",
         "checkbox_wishlist": "Wishlist",
-        "checkbox_wishlist_help": "Inclui os Digimon da Wishlist na lista 'Quase lá' e usa o Nível Alvo como critério de comparação.",
+        "checkbox_wishlist_help": "Inclui os Digimon da Wishlist na lista atual",
+        "msg_quase_no_results": "Nenhum digimon encontrado com a busca.",
         "target_abbr": "Alvo",
+        "radio_sort_xp": "Menor XP Restante",
+        "radio_sort_acc": "Menor Talento ACC",
+        "lbl_obs_acc": "OBS: Os valores entre chaves{} nas linhas representam o novo valor de talento se você evoluir o Digimon.",
         "loc_labels": {"PARTY": "PARTY", "BOX": "BOX", "FAZENDA": "FAZENDA"}
     }
 }
@@ -259,6 +326,8 @@ class DigimonMonitorApp:
         self.is_paused = False
         self.last_mtime = 0
         self.blink_state = False
+        # ... dentro do __init__, junto das outras variáveis ...
+        self.quase_sort_by = self.config_data.get("quase_sort_by", "XP") # XP ou ACC
 
         self.setup_ui()
         self.update_loop()
@@ -326,6 +395,8 @@ class DigimonMonitorApp:
         self.config_data["quase_filter_protected"] = getattr(self, 'quase_filter_protected', False)
         self.config_data["quase_filter_wishlist"] = getattr(self, 'quase_filter_wishlist', False)
         self.config_data["list_order"] = self.get_normalized_list_order()
+        # ... dentro do save_config ...
+        self.config_data["quase_sort_by"] = getattr(self, 'quase_sort_by', "XP")
         try:
             with open(CONFIG_FILE, "w") as f:
                 json.dump(self.config_data, f, indent=4)
@@ -393,6 +464,8 @@ class DigimonMonitorApp:
         self.rb_auto.config(text=t["modo_auto"])
         self.rb_manual.config(text=t["modo_manual"])
         self.btn_change_folder.config(text=t["btn_change_folder"])
+        if not getattr(self, "_sync_excel_running", False):
+            self.btn_sync_excel.config(text=t["btn_sync_excel"])
         self.lbl_inspect.config(text=t["lbl_inspect"])
         self.lbl_paused.config(text=t["lbl_paused"])
         self.btn_resume.config(text=t["btn_resume"])
@@ -456,11 +529,11 @@ class DigimonMonitorApp:
         lang_frame = tk.Frame(control_frame, bg=PANEL_BG)
         lang_frame.pack(fill=tk.X, padx=15, pady=5)
         
-        tk.Radiobutton(lang_frame, text="🇧🇷 Português", variable=self.lang_var, value="PT", 
+        tk.Radiobutton(lang_frame, text="🇺🇸 English", variable=self.lang_var, value="EN", 
                        command=self.on_lang_change, bg=PANEL_BG, fg="white", selectcolor=BTN_BG, 
                        font=("Consolas", 10)).pack(side=tk.LEFT, expand=True)
-                       
-        tk.Radiobutton(lang_frame, text="🇺🇸 English", variable=self.lang_var, value="EN", 
+        
+        tk.Radiobutton(lang_frame, text="🇧🇷 Português", variable=self.lang_var, value="PT", 
                        command=self.on_lang_change, bg=PANEL_BG, fg="white", selectcolor=BTN_BG, 
                        font=("Consolas", 10)).pack(side=tk.LEFT, expand=True)
 
@@ -475,8 +548,23 @@ class DigimonMonitorApp:
         self.rb_manual.pack(anchor="w", padx=15, pady=5)
 
         self.btn_change_folder = tk.Button(control_frame, text=I18N[self.lang]["btn_change_folder"], command=self.change_directory, 
-                  bg="#555555", fg="white", font=("Consolas", 9), relief=tk.FLAT)
+                                  bg="#555555", fg="white", font=("Consolas", 9), relief=tk.FLAT)
         self.btn_change_folder.pack(pady=(15, 5), padx=15, fill=tk.X)
+
+        # ==========================================
+        # INTEGRAÇÃO EXCEL (CONDICIONAL)
+        # ==========================================
+        self.btn_sync_excel = tk.Button(control_frame, text=I18N[self.lang]["btn_sync_excel"], command=self.on_sync_excel_click,
+                                  bg="#1F6FEB", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT)
+        self.lbl_sync_status = tk.Label(control_frame, text="", bg=PANEL_BG, fg=FG_COLOR,
+                                         font=("Consolas", 9, "bold"))
+        self._sync_status_after_id = None
+
+        # O botão e o status só ganham layout (pack) se a flag estiver True
+        if EXCEL_SYNC_ENABLED:
+            self.btn_sync_excel.pack(pady=(0, 2), padx=15, fill=tk.X)
+            self.lbl_sync_status.pack(pady=(0, 5), padx=15, fill=tk.X)
+        # ==========================================
 
         self.lbl_inspect = tk.Label(control_frame, text=I18N[self.lang]["lbl_inspect"], bg=PANEL_BG, fg="white", font=("Consolas", 10))
         self.lbl_inspect.pack(anchor="w", padx=15, pady=(15, 5))
@@ -527,6 +615,7 @@ class DigimonMonitorApp:
         self.entry_wish_id.bind("<Up>", self.on_wishlist_query_up)
         self.entry_wish_id.bind("<Return>", self.on_wishlist_query_return)
         self.entry_wish_id.bind("<Escape>", self.on_wishlist_query_escape)
+        self.entry_wish_id.bind("<Tab>", self.on_wishlist_tab_to_combo)
         # Clicar fora do campo fecha o dropdown (pequeno atraso pra dar tempo do clique
         # num item da lista ser processado antes de fecharmos ela).
         self.entry_wish_id.bind("<FocusOut>", lambda event: self.root.after(150, self.close_wish_autocomplete))
@@ -657,14 +746,510 @@ class DigimonMonitorApp:
             return ""
         return data[uid_start:uid_end].hex().upper()
 
+    # def read_digimon_protected(self, data, name_offset):
+    #     """Lê o status de proteção (cadeado) do Digimon. Offset achado via Cheat Engine:
+    #     Protection = Talent (name_offset + 0x100) + 0x1C = name_offset + 0x11C.
+    #     1 = protegido, 0 = desprotegido."""
+    #     offset = name_offset + 0x11C
+    #     if offset + 4 > len(data):
+    #         return False
+    #     return struct.unpack_from("<I", data, offset)[0] == 1
+
     def read_digimon_protected(self, data, name_offset):
         """Lê o status de proteção (cadeado) do Digimon. Offset achado via Cheat Engine:
         Protection = Talent (name_offset + 0x100) + 0x1C = name_offset + 0x11C.
-        1 = protegido, 0 = desprotegido."""
+        Utiliza máscara de bits (& 1) para capturar o cadeado mesmo se o Digimon
+        tiver outros status (como 256) somados no mesmo byte."""
         offset = name_offset + 0x11C
         if offset + 4 > len(data):
             return False
-        return struct.unpack_from("<I", data, offset)[0] == 1
+        
+        # Lê o valor bruto salvo na memória (ex: 0, 1, 256, 257)
+        status_value = struct.unpack_from("<I", data, offset)[0]
+        
+        # Retorna True apenas se o bit correspondente ao valor 1 estiver ativo
+        return (status_value & 1) != 0
+    
+    def sync_protected_talents_to_excel(self, active_digimons, populate_comparison=False):
+        """
+        Sincroniza o ascendant_talent_raw dos Digimons protegidos com a
+        planilha timestranger.xlsm, mantendo o Excel aberto (via xlwings).
+
+        IMPORTANTE: este método é chamado sob demanda (botão "🔄 Sync Excel"),
+        rodando numa thread separada da UI - por isso ele NÃO toca em nenhum
+        widget do tkinter diretamente (nem self.log). Em vez disso, devolve
+        um dict de resultado; quem atualiza a tela é o handler do botão
+        (on_sync_excel_click), via self.root.after(...).
+
+        Se populate_comparison=True, depois de atualizar a planilha principal
+        também popula/atualiza a aba "Comparações_Talento" (histórico de
+        talento ascendente ao longo do tempo), reaproveitando a MESMA conexão
+        já aberta com o Excel (sem custo extra de abrir o arquivo de novo).
+
+        Performático porque:
+        - Só roda quando o usuário pede (não mais a cada leitura de save,
+          que era o gargalo antes).
+        - Lê a Coluna F inteira de uma vez (1 chamada COM) e monta um dict
+          nome -> linha em memória, em vez de buscar célula por célula.
+        - Escreve em lote (um único range 2D), em vez de 1 write por Digimon.
+        - Desliga screen_updating/cálculo automático durante a escrita e
+          restaura no final, mesmo se der erro.
+
+        Retorna: {'status': 'disabled'|'no_lib'|'no_protected'|'no_match'|'ok'|'error',
+                  'count': int, 'error': str|None,
+                  'comparison': {'status':.., 'count':.., 'new':.., 'error':..} | None}
+        """
+        if not EXCEL_SYNC_ENABLED:
+            return {'status': 'disabled', 'count': 0, 'error': None, 'comparison': None}
+        if not XLWINGS_AVAILABLE:
+            return {'status': 'no_lib', 'count': 0, 'error': None, 'comparison': None}
+
+        protegidos = [d for d in active_digimons.values() if d.get('protected')]
+        if not protegidos:
+            return {'status': 'no_protected', 'count': 0, 'error': None, 'comparison': None}
+
+        app = None
+        book = None
+        prev_screen_updating = None
+        prev_calculation = None
+        comparison_result = None
+
+        try:
+            # Procura o arquivo já aberto entre as instâncias do Excel em execução
+            # (não abre uma cópia nova nem uma instância invisível separada).
+            target_name = os.path.basename(EXCEL_FILE_PATH).lower()
+            for running_app in xw.apps:
+                for bk in running_app.books:
+                    if bk.name.lower() == target_name:
+                        app = running_app
+                        book = bk
+                        break
+                if book:
+                    break
+
+            if book is None:
+                # Não está aberto: abre agora (visível, pra não surpreender o usuário).
+                app = xw.apps.active if xw.apps else xw.App(visible=True)
+                book = app.books.open(EXCEL_FILE_PATH)
+
+            sheet = book.sheets[EXCEL_SHEET_NAME] if EXCEL_SHEET_NAME else book.sheets.active
+
+            prev_screen_updating = app.screen_updating
+            prev_calculation = app.calculation
+            app.screen_updating = False
+            app.calculation = 'manual'
+
+            used_range = sheet.used_range
+            last_row = used_range.last_cell.row
+
+            main_status = 'ok'
+            main_count = 0
+
+            if last_row < EXCEL_HEADER_ROW:
+                main_status = 'no_match'
+            else:
+                # Lê a Coluna F inteira numa única chamada
+                col_values = sheet.range(
+                    (EXCEL_HEADER_ROW, EXCEL_COL_NAME),
+                    (last_row, EXCEL_COL_NAME)
+                ).value
+                if not isinstance(col_values, list):
+                    col_values = [col_values]
+
+                name_to_row = {}
+                for idx, val in enumerate(col_values):
+                    if val:
+                        name_to_row[str(val).strip().upper()] = EXCEL_HEADER_ROW + idx
+
+                # Monta a lista de linhas a atualizar (evita gravar linhas não-contíguas 1 a 1
+                # quando dá pra agrupar num único range)
+                row_updates = {}
+                for dig in protegidos:
+                    name_key = str(dig.get('name', '')).strip().upper()
+                    row = name_to_row.get(name_key)
+                    if row:
+                        row_updates[row] = dig.get('ascendant_talent')
+
+                if not row_updates:
+                    main_status = 'no_match'
+                else:
+                    rows_sorted = sorted(row_updates.keys())
+                    first_row, last_row_update = rows_sorted[0], rows_sorted[-1]
+
+                    # Se as linhas encontradas formam (ou quase formam) um bloco contíguo,
+                    # escreve tudo de uma vez com um único range 2D.
+                    # Caso contrário, escreve linha a linha (ainda rápido pois já é pouco volume).
+                    if last_row_update - first_row + 1 == len(rows_sorted):
+                        block_values = [[row_updates[r]] for r in rows_sorted]
+                        sheet.range(
+                            (first_row, EXCEL_COL_ASCENDANT),
+                            (last_row_update, EXCEL_COL_ASCENDANT)
+                        ).value = block_values
+                    else:
+                        for row, value in row_updates.items():
+                            sheet.range((row, EXCEL_COL_ASCENDANT)).value = value
+
+                    main_count = len(row_updates)
+
+            # A aba de comparação não depende de nomes baterem com a Coluna F
+            # da planilha principal - ela usa os dados já lidos do save
+            # (loc/name/ascendant_talent) diretamente, então roda mesmo que
+            # o sync principal não tenha achado correspondência (main_status
+            # == 'no_match').
+            if populate_comparison:
+                comparison_result = self._sync_comparison_sheet(book, protegidos)
+
+            return {'status': main_status, 'count': main_count, 'error': None, 'comparison': comparison_result}
+
+        except Exception as e:
+            return {'status': 'error', 'count': 0, 'error': str(e), 'comparison': comparison_result}
+        finally:
+            if app is not None:
+                try:
+                    if prev_calculation is not None:
+                        app.calculation = prev_calculation
+                    if prev_screen_updating is not None:
+                        app.screen_updating = prev_screen_updating
+                except Exception:
+                    pass
+
+    def _sync_comparison_sheet(self, book, protegidos):
+        """
+        Popula/atualiza a aba "Comparações_Talento" com o histórico.
+        Trabalha em Ciclos de 5 rodadas: ao chegar na 5ª, ele reinicia
+        a tabela transformando o resultado na nova Coluna A e B.
+        Ordena automaticamente do maior ganho para o menor.
+        
+
+        Chamada de dentro de sync_protected_talents_to_excel, reaproveitando
+        o MESMO `book` já aberto (não abre uma conexão nova com o Excel).
+
+        Layout da aba (colunas crescem pra direita a cada rodada de sync):
+            A: "[ Local ] Nome do Digimon"   <- chave da linha (nome, sem colchetes)
+            B: Talento Inicial               <- 1ª extração (baseline, sem comparação)
+            C: Comparação 2   D: Talento 2   <- a partir da 2ª extração: par
+            E: Comparação 3   F: Talento 3      (Comparação, Talento) por rodada
+            ...
+
+        Comparação (colunas C, E, G, ...):
+            "[ Local Atual ] Nome Aumentou +X!"   -> fonte azul
+            "[ Local Atual ] Nome Diminuiu -X!"   -> fonte vermelha
+            "[ Local Atual ] Nome Mesmo talento!" -> sem cor
+
+        Retorna: {'status': 'created'|'updated'|'error', 'count': int, 'new': int, 'error': str|None}
+        """
+        try:
+            sheet_names = [s.name for s in book.sheets]
+
+            # -------------------------------------------------------------
+            # FUNÇÃO AUXILIAR PARA CRIAR O BASELINE (Aba nova, vazia ou Reset)
+            # -------------------------------------------------------------
+            def _create_baseline(sheet_obj):
+                sheet_obj.clear()
+                rows = []
+                for dig in protegidos:
+                    local = dig.get('loc', '?')
+                    name = str(dig.get('name', '')).strip()
+                    talent = dig.get('ascendant_talent')
+                    rows.append({
+                        'label': f"[ {local} ] {name}",
+                        'name': name,
+                        'talent': talent
+                    })
+                
+                # Ordena alfabeticamente pelo nome para o estado inicial
+                rows.sort(key=lambda x: x['name'].upper())
+
+                grid = [["Digimon", "Talento Inicial"]]
+                for r in rows:
+                    grid.append([r['label'], r['talent']])
+
+                sheet_obj.range((1, 1)).value = grid
+                sheet_obj.autofit()
+                try:
+                    sheet_obj.api.AutoFilterMode = False
+                    sheet_obj.range("A1:B1").api.AutoFilter(1)
+                except Exception: pass
+                return {'status': 'created', 'count': len(rows), 'new': 0, 'error': None}
+
+            # CASO 1: Aba não existe
+            if EXCEL_COMPARISON_SHEET_NAME not in sheet_names:
+                sheet = book.sheets.add(EXCEL_COMPARISON_SHEET_NAME, after=book.sheets[-1])
+                return _create_baseline(sheet)
+
+            sheet = book.sheets[EXCEL_COMPARISON_SHEET_NAME]
+            used_range = sheet.used_range
+            last_row = used_range.last_cell.row
+            last_col = used_range.last_cell.column
+
+            if last_row < 2:
+                return _create_baseline(sheet)
+
+            # Lê a matriz completa de dados atuais da planilha
+            full_data = sheet.range((1, 1), (last_row, last_col)).value
+            if not isinstance(full_data, list):
+                full_data = [[full_data]]
+            elif full_data and not isinstance(full_data[0], list):
+                full_data = [full_data]
+
+            headers = full_data[0]
+            
+            # Identifica os índices das colunas de Talento (0-based)
+            talent_cols_indices = [idx for idx, h in enumerate(headers) if h and str(h).strip().lower().startswith("talento")]
+
+            rounds_so_far = len(talent_cols_indices)
+            last_talent_idx = talent_cols_indices[-1] if talent_cols_indices else 1
+
+            # -------------------------------------------------------------
+            # REINÍCIO DE CICLO (RODADA 5 -> RESET PARA COLUNAS A E B)
+            # -------------------------------------------------------------
+            if rounds_so_far >= 4:
+                return _create_baseline(sheet)
+
+            # -------------------------------------------------------------
+            # RODADA NORMAL (Adiciona Comparação X e Talento X)
+            # -------------------------------------------------------------
+            new_round_num = rounds_so_far + 1
+            new_comp_header = f"Comparação {new_round_num}"
+            new_value_header = f"Talento {new_round_num}"
+
+            new_headers = list(headers) + [new_comp_header, new_value_header]
+            
+            protegido_by_name = {str(d.get('name', '')).strip().upper(): d for d in protegidos}
+            name_pattern = re.compile(r'^\[\s*[^\]]*\]\s*(.*)$')
+
+            processed_rows = []
+            matched_names = set()
+
+            # Processa as linhas existentes na planilha
+            for row in full_data[1:]:
+                row_cells = list(row)
+                raw_name_cell = row_cells[0] if len(row_cells) > 0 else ""
+                old_talent_val = row_cells[last_talent_idx] if len(row_cells) > last_talent_idx else None
+
+                bare_name = ""
+                if raw_name_cell:
+                    m = name_pattern.match(str(raw_name_cell))
+                    bare_name = m.group(1).strip() if m else str(raw_name_cell).strip()
+
+                key = bare_name.upper()
+                dig = protegido_by_name.get(key)
+
+                if dig is None:
+                    comp_text = f"[ ? ] {bare_name} - Digimon não encontrado nesta rodada"
+                    new_talent = ""
+                    diff = -999999 # Coloca no fim da lista
+                    color = None
+                else:
+                    matched_names.add(key)
+                    local = dig.get('loc', '?')
+                    new_talent = dig.get('ascendant_talent')
+                    
+                    diff = 0
+                    color = None
+                    if isinstance(old_talent_val, (int, float)) and isinstance(new_talent, (int, float)):
+                        diff = new_talent - old_talent_val
+                        if diff > 0:
+                            status_str = f"Aumentou +{int(diff)}!"
+                            color = 'blue'
+                        elif diff < 0:
+                            status_str = f"Diminuiu -{abs(int(diff))}!"
+                            color = 'red'
+                        else:
+                            status_str = "Mesmo talento!"
+                    else:
+                        status_str = "Sem valor anterior para comparar."
+
+                    comp_text = f"[ {local} ] {bare_name} - {status_str}"
+
+                # Anexa as duas novas células ao final da linha existente
+                row_cells.append(comp_text)
+                row_cells.append(new_talent)
+
+                processed_rows.append({
+                    'row_cells': row_cells,
+                    'bare_name': bare_name,
+                    'diff': diff,
+                    'color': color
+                })
+
+            # Adiciona Digimons novos que surgiram nesta rodada
+            novos = [d for d in protegidos if str(d.get('name', '')).strip().upper() not in matched_names]
+            for dig in novos:
+                local = dig.get('loc', '?')
+                bare_name = str(dig.get('name', '')).strip()
+                new_talent = dig.get('ascendant_talent')
+
+                new_row_cells = [f"[ {local} ] {bare_name}"]
+                # Preenche com colunas vazias até atingir o número de colunas antigas
+                while len(new_row_cells) < len(headers):
+                    new_row_cells.append("")
+                
+                comp_text = f"[ {local} ] {bare_name} - Novo Digimon protegido - sem comparação anterior."
+                new_row_cells.append(comp_text)
+                new_row_cells.append(new_talent)
+
+                processed_rows.append({
+                    'row_cells': new_row_cells,
+                    'bare_name': bare_name,
+                    'diff': 0,
+                    'color': None
+                })
+
+            # ORDENAÇÃO SEGURA NO PYTHON: Maior ganho primeiro, desempate em Ordem Alfabética
+            processed_rows.sort(key=lambda x: (-x['diff'], x['bare_name'].upper()))
+
+            # Monta a matriz final
+            final_grid = [new_headers]
+            for r in processed_rows:
+                final_grid.append(r['row_cells'])
+
+            # Reescreve a planilha de uma vez só
+            sheet.clear()
+            sheet.range((1, 1)).value = final_grid
+
+            # Aplica a cor do texto exclusivamente na nova coluna de Comparação
+            comp_col_excel = len(new_headers) - 1 # Posição 1-based da penúltima coluna
+            
+            for row_i, r in enumerate(processed_rows, start=2):
+                if r['color'] == 'blue':
+                    sheet.range((row_i, comp_col_excel)).font.color = (30, 100, 255)
+                elif r['color'] == 'red':
+                    sheet.range((row_i, comp_col_excel)).font.color = (220, 30, 30)
+
+            sheet.autofit()
+
+            # Aplica AutoFiltro na tabela inteira
+            try:
+                sheet.api.AutoFilterMode = False
+                sheet.range((1, 1), (1, len(new_headers))).api.AutoFilter(1)
+            except Exception: pass
+
+            return {'status': 'updated', 'count': len(processed_rows), 'new': len(novos), 'error': None}
+
+        except Exception as e:
+            return {'status': 'error', 'count': 0, 'new': 0, 'error': str(e)}
+
+    def on_sync_excel_click(self):
+        """
+        Handler do botão "🔄 Sync Excel". Roda a sincronização sob demanda,
+        numa thread separada, pra chamada COM com o Excel (que pode demorar
+        um pouco, principalmente se a planilha tiver muitas linhas) não travar
+        a janela do programa. A UI só é tocada de volta na thread principal,
+        via self.root.after(...).
+        """
+        t = I18N[self.lang]
+
+        if getattr(self, "_sync_excel_running", False):
+            return  # já tem uma sincronização rodando, ignora clique duplicado
+
+        active_digimons = getattr(self, "active_digimons", None)
+        if not active_digimons:
+            self.log(f" {t['msg_sync_excel_no_data']}", "alert")
+            return
+
+        # Decide se vai popular a aba de comparação, respeitando as flags:
+        # - COMPARADOR_SYNC=False -> nunca roda a comparação (nem pergunta).
+        # - COMPARADOR_SYNC=True + ALERT_MSG_SYNC=True  -> pergunta antes (comportamento antigo).
+        # - COMPARADOR_SYNC=True + ALERT_MSG_SYNC=False -> roda direto, sem caixa de alerta.
+        if not COMPARADOR_SYNC:
+            populate_comparison = False
+        elif ALERT_MSG_SYNC:
+            # O messagebox precisa rodar na thread principal (é modal e mexe com o
+            # loop de eventos do tkinter), por isso perguntamos ANTES de disparar
+            # a thread de trabalho, não depois.
+            populate_comparison = messagebox.askyesno(
+                t["ask_sync_comparison_title"],
+                t["ask_sync_comparison_body"]
+            )
+        else:
+            populate_comparison = True
+
+        self._sync_excel_running = True
+        self.btn_sync_excel.config(state=tk.DISABLED, text=t["btn_sync_excel_running"])
+        if self._sync_status_after_id is not None:
+            try:
+                self.root.after_cancel(self._sync_status_after_id)
+            except Exception:
+                pass
+            self._sync_status_after_id = None
+        self.lbl_sync_status.config(text="")
+
+        def worker():
+            result = self.sync_protected_talents_to_excel(active_digimons, populate_comparison=populate_comparison)
+            self.root.after(0, lambda: self._on_sync_excel_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_sync_excel_done(self, result):
+        """Roda na thread principal (chamado via root.after) pra atualizar a UI com segurança."""
+        t = I18N[self.lang]
+        self._sync_excel_running = False
+        self.btn_sync_excel.config(state=tk.NORMAL, text=t["btn_sync_excel"])
+
+        status = result.get('status')
+        label_msg, label_color = None, FG_COLOR
+
+        if status == 'ok':
+            msg = f"{t['msg_sync_excel_ok']}{result.get('count', 0)}"
+            self.log(f" {msg}", "status")
+            label_msg, label_color = msg, FG_COLOR
+        elif status in ('no_protected', 'no_match'):
+            msg = t['msg_sync_excel_none']
+            self.log(f" {msg}", "status")
+            label_msg, label_color = msg, FG_ALMOST
+        elif status == 'disabled':
+            msg = t['msg_sync_excel_disabled']
+            self.log(f" {msg}", "alert")
+            label_msg, label_color = msg, FG_ALERT
+        elif status == 'no_lib':
+            msg = "⚠️ xlwings não instalado."
+            self.log(" ⚠️ xlwings não instalado - sync com Excel desativado.", "alert")
+            label_msg, label_color = msg, FG_ALERT
+        elif status == 'error':
+            self.log(f" ⚠️ [Excel Sync] Falha ao atualizar planilha: {result.get('error')}", "alert")
+            label_msg, label_color = "⚠️ Erro ao sincronizar.", FG_ALERT
+
+        # Resultado da aba "Comparações_Talento" (só existe se o usuário
+        # respondeu "Sim" à pergunta de popular a aba de comparação).
+        comparison = result.get('comparison')
+        if comparison is not None:
+            comp_status = comparison.get('status')
+            if comp_status == 'created':
+                comp_msg = t['msg_comparison_created'].format(count=comparison.get('count', 0))
+                self.log(comp_msg, "status")
+                label_msg, label_color = comp_msg.strip(), FG_COLOR
+            elif comp_status == 'updated':
+                comp_msg = t['msg_comparison_updated'].format(
+                    count=comparison.get('count', 0), new=comparison.get('new', 0)
+                )
+                self.log(comp_msg, "status")
+                label_msg, label_color = comp_msg.strip(), FG_COLOR
+            elif comp_status == 'error':
+                comp_msg = f"{t['msg_comparison_error']}{comparison.get('error')}"
+                self.log(comp_msg, "alert")
+                label_msg, label_color = "⚠️ Erro na aba de comparação.", FG_ALERT
+
+        if label_msg:
+            self._show_sync_status_label(label_msg, label_color)
+
+    def _show_sync_status_label(self, message, color, duration_ms=3000):
+        """Mostra 'message' no label logo abaixo do botão de sync e agenda o sumiço
+        automático depois de 'duration_ms'. Cancela qualquer timer pendente anterior
+        pra evitar que um clique novo seja apagado por um timer de um clique antigo."""
+        if self._sync_status_after_id is not None:
+            try:
+                self.root.after_cancel(self._sync_status_after_id)
+            except Exception:
+                pass
+            self._sync_status_after_id = None
+
+        self.lbl_sync_status.config(text=message, fg=color)
+        self._sync_status_after_id = self.root.after(duration_ms, self._clear_sync_status_label)
+
+    def _clear_sync_status_label(self):
+        self.lbl_sync_status.config(text="")
+        self._sync_status_after_id = None
 
     def get_level_exp_display(self, digimon_id, level, current_exp):
         level_exp, next_level_exp = self.get_level_exp_progress(digimon_id, level, current_exp)
@@ -764,7 +1349,7 @@ class DigimonMonitorApp:
     # enquanto o usuário digita, sem NUNCA tirar o foco do campo — a combobox nativa do
     # Tkinter rouba o foco assim que o dropdown dela abre, o que quebrava a digitação.
     # ==========================================
-    WISH_AC_MAX_ROWS = 12
+    WISH_AC_MAX_ROWS = VALORES_BUSCA
 
     def on_wishlist_query_keyrelease(self, event=None):
         if event and event.keysym in ('Up', 'Down', 'Return', 'Escape', 'Tab'):
@@ -845,6 +1430,22 @@ class DigimonMonitorApp:
             self.select_wish_autocomplete_index(self._wish_ac_index)
         else:
             self.search_wishlist_digimon()
+    
+    def on_wishlist_tab_to_combo(self, event):
+        # 1. Verifica se o dropdown flutuante está aberto e tem opções
+        if self._wish_ac_popup is not None and str(self._wish_ac_popup.state()) == "normal" and getattr(self, '_wish_ac_options', None):
+            # Confirma a sugestão destacada (joga pra combobox e pro campo de busca)
+            self.select_wish_autocomplete_index(self._wish_ac_index)
+            
+            # Pulo Ninja: Já manda o cursor direto para digitar o Nível Alvo!
+            self.entry_wish_target.focus_set()
+            return "break"
+        
+        # 2. Se o dropdown estiver fechado, o TAB faz o comportamento normal de pular
+        self.combo_wish_results.focus_set()
+        
+        # Retorna "break" para cancelar a ação nativa do Tkinter
+        return "break"
 
     def on_wishlist_query_escape(self, event=None):
         self.close_wish_autocomplete()
@@ -919,6 +1520,10 @@ class DigimonMonitorApp:
 
         if hasattr(self, '_current_filepath') and os.path.exists(self._current_filepath):
             self.process_save(self._current_filepath, self._current_filename)
+            
+        # ---> MUDANÇA AQUI <---
+        # Limpou tudo? Joga o foco de volta na busca inicial!
+        self.entry_wish_id.focus_set()
 
     def delete_wishlist_item(self, original_index):
         """Remove um item da Wishlist pelo índice (pra sempre) e atualiza o JSON."""
@@ -1179,6 +1784,7 @@ class DigimonMonitorApp:
     def calculate_almost_data(self, data, name_offset, name, level, talent, loc, protected, uid, is_almost):
         digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
         current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
+        ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
         
         exp_alvo = get_exp_needed(digimon_id, talent)
         exp_base = get_exp_needed(digimon_id, level)
@@ -1189,7 +1795,7 @@ class DigimonMonitorApp:
         bar_str = self.build_progress_bar(faltam, progresso_total)
         faltam_str = f"{faltam:,}".replace(",", ".")
         
-        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected, uid, is_almost)
+        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected, uid, is_almost, ascendant_talent_raw)
 
     def process_save(self, filepath, filename):
         self._current_filepath = filepath
@@ -1263,16 +1869,18 @@ class DigimonMonitorApp:
                 count_farm += 1
                 processed.add(offset)
 
+                # Dentro de for i in range(30):
                 digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
                 uid = self.read_digimon_uid(data, name_offset)
                 level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
+                ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                 protected = self.read_digimon_protected(data, name_offset)
                 talent_for_dict = min(talent_raw // 1000, 99) if talent_raw >= 1000 else 1
 
                 active_digimons[("FAZENDA", i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected, 'talent': talent_for_dict
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected, 'talent': talent_for_dict, 'ascendant_talent': ascendant_talent_raw
                 }
 
                 if talent_raw >= 1000:
@@ -1280,10 +1888,10 @@ class DigimonMonitorApp:
                     if talent > 99: talent = 99 
                     
                     if level == 99:
-                        lv99_list["FAZENDA"].append((name, level, talent, protected))
+                        lv99_list["FAZENDA"].append((name, level, talent, protected, ascendant_talent_raw))
                         total_lv99 += 1
                     elif level >= talent: 
-                        alerts["FAZENDA"].append((name, level, talent, protected))
+                        alerts["FAZENDA"].append((name, level, talent, protected, ascendant_talent_raw))
                         total_alerts += 1
                     elif level == talent - 1:
                         almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, True)
@@ -1321,16 +1929,18 @@ class DigimonMonitorApp:
                 
                 processed.add(offset)
 
+                # Dentro de for loc, start, h_size, max_s in regions: ... for i in range(max_s):
                 digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
                 uid = self.read_digimon_uid(data, name_offset)
                 level = struct.unpack_from("<I", data, name_offset + 0x60)[0]
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
+                ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
                 protected = self.read_digimon_protected(data, name_offset)
                 talent_for_dict = min(talent_raw // 1000, 99) if talent_raw >= 1000 else 1
 
                 active_digimons[(loc, i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected, 'talent': talent_for_dict
+                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected, 'talent': talent_for_dict, 'ascendant_talent': ascendant_talent_raw
                 }
 
                 if talent_raw >= 1000:
@@ -1338,10 +1948,10 @@ class DigimonMonitorApp:
                     if talent > 99: talent = 99 
                     
                     if level == 99:
-                        lv99_list[loc].append((name, level, talent, protected))
+                        lv99_list[loc].append((name, level, talent, protected, ascendant_talent_raw))
                         total_lv99 += 1
                     elif level >= talent: 
-                        alerts[loc].append((name, level, talent, protected))
+                        alerts[loc].append((name, level, talent, protected, ascendant_talent_raw))
                         total_alerts += 1
                     elif level == talent - 1:
                         almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, True)
@@ -1366,6 +1976,12 @@ class DigimonMonitorApp:
         # ==========================================
         self.active_digimons = active_digimons  # guarda pra os botões de Readicionar usarem depois
         self.update_wishlist_context_label()
+
+        # OBS: a sincronização com o Excel NÃO roda mais automaticamente aqui.
+        # Ela ficava cara demais rodando a cada leitura de save (que acontece
+        # com bastante frequência no modo automático). Agora é sob demanda,
+        # disparada pelo botão "🔄 Sync Excel" (self.btn_sync_excel), que
+        # chama self.sync_protected_talents_to_excel(self.active_digimons).
 
         wishlist_resolved = []   # [(w_idx, item, dig_info), ...] -> ainda existem no save, ativos
         wishlist_orphaned = []   # [(w_idx, item), ...] -> órfãos (já marcados, ou detectados agora)
@@ -1431,17 +2047,19 @@ class DigimonMonitorApp:
             w_name = dig_info['name']
             w_protected = dig_info.get('protected', False)
 
+            # Dentro do loop de wishlist_resolved:
             exp_target = get_exp_needed(dig_id, target_lvl)
             exp_base = get_exp_needed(dig_id, cur_lvl)
             faltam = exp_target - cur_exp
+            asc_talent = dig_info['ascendant_talent']
 
             if faltam <= 0 or cur_lvl >= target_lvl:
-                wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc, w_protected))
+                wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc, w_protected, asc_talent))
             else:
                 prog_total = exp_target - exp_base
                 bar_str = self.build_progress_bar(faltam, prog_total)
                 faltam_str = f"{faltam:,}".replace(",", ".")
-                wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc, w_protected))
+                wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc, w_protected, asc_talent))
 
         # Os que bateram a meta contam no resumo junto com os alertas normais
         total_alerts += len(wishlist_reached)
@@ -1449,12 +2067,15 @@ class DigimonMonitorApp:
         self.save_combo.set(filename)
         self.save_combo.selection_clear()
         
+        # Onde a mensagem de Status é impressa:
         self.log("=" * 75, "header")
         self.log(t["app_title"], "header")
         self.log("=" * 75, "header")
         
+        
         status_msg = f"{t['status_inspecting']}{filename}" if self.is_paused else f"{t['status_monitoring']}{filename}"
         self.log(f"{t['status_prefix']}{status_msg}{t['lbl_updated']}{time.strftime('%H:%M:%S')}", "status")
+        self.log(t.get("lbl_obs_acc", "OBS: Os valores entre chaves{} nas linhas representam o novo valor do talento se você evoluir o Digimon."), "almost")
         self.log("-" * 75, "status")
 
         if wishlist_orphaned:
@@ -1484,13 +2105,15 @@ class DigimonMonitorApp:
         reached_rows = []
         for loc in ["PARTY", "BOX", "FAZENDA"]:
             alerts[loc].sort(key=lambda x: (x[0], x[1]))
-            for name, level, talent, protected in alerts[loc]:
-                reached_rows.append(("alert", loc, name, level, talent, protected))
+            # 1. ADICIONADO: asc_talent no desempacotamento
+            for name, level, talent, protected, asc_talent in alerts[loc]:
+                reached_rows.append(("alert", loc, name, level, talent, protected, asc_talent))
 
-            for w_idx, w_name, w_level, w_target, w_item_loc, w_protected in wishlist_reached:
+            # 2. ADICIONADO: asc_talent no desempacotamento da wishlist
+            for w_idx, w_name, w_level, w_target, w_item_loc, w_protected, asc_talent in wishlist_reached:
                 if w_item_loc != loc:
                     continue
-                reached_rows.append(("wishlist", loc, w_idx, w_name, w_level, w_target, w_protected))
+                reached_rows.append(("wishlist", loc, w_idx, w_name, w_level, w_target, w_protected, asc_talent))
 
         self.update_summary_panel(count_party, count_box, count_farm, total_alerts, total_almost, total_lv99, total_protected, t, loc_lbl)
 
@@ -1574,26 +2197,11 @@ class DigimonMonitorApp:
                 btn_fetch.pack(side=tk.LEFT)
 
                 filter_frame = tk.Frame(self.text_area, bg=BG_COLOR)
-                for option, label in [("TODOS", t["radio_all"]), ("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"])]:
+                for option, label in [("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"]), ("TODOS", t["radio_all"])]:
                     tk.Radiobutton(filter_frame, text=label, value=option, variable=self.quase_filter_loc_var,
                                    command=lambda: self.apply_quase_filters(filepath, filename), bg=BG_COLOR, fg="white",
                                    selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9),
                                    cursor="hand2").pack(side=tk.LEFT, padx=(0, 10))
-
-                self.chk_quase_protected = tk.Checkbutton(
-                    filter_frame,
-                    text=t["checkbox_protected"],
-                    variable=self.quase_filter_protected_var,
-                    command=lambda: self.apply_quase_filters(filepath, filename),
-                    bg=BG_COLOR,
-                    fg="white",
-                    selectcolor=BTN_BG,
-                    activebackground=BG_COLOR,
-                    activeforeground="white",
-                    font=("Consolas", 9),
-                    cursor="hand2",
-                )
-                self.chk_quase_protected.pack(side=tk.LEFT, padx=(0, 10))
 
                 self.chk_quase_wishlist = tk.Checkbutton(
                     filter_frame,
@@ -1608,22 +2216,85 @@ class DigimonMonitorApp:
                     font=("Consolas", 9),
                     cursor="hand2",
                 )
+                                
+                self.chk_quase_protected = tk.Checkbutton(
+                    filter_frame,
+                    text=t["checkbox_protected"],
+                    variable=self.quase_filter_protected_var,
+                    command=lambda: self.apply_quase_filters(filepath, filename),
+                    bg=BG_COLOR,
+                    fg="white",
+                    selectcolor=BTN_BG,
+                    activebackground=BG_COLOR,
+                    activeforeground="white",
+                    font=("Consolas", 9),
+                    cursor="hand2",
+                )
+
                 self.chk_quase_wishlist.pack(side=tk.LEFT, padx=(0, 10))
                 self.chk_quase_wishlist.bind("<Enter>", lambda event: self._show_quase_wishlist_hint(event, self._quase_wishlist_hint_text))
                 self.chk_quase_wishlist.bind("<Leave>", self._hide_quase_wishlist_hint)
+                self.chk_quase_protected.pack(side=tk.LEFT, padx=(0, 10))
 
+                # ========================================================
+                # RADIOBUTTONS (OptionMenu) DE ORDENAÇÃO NA MESMA LINHA
+                # ========================================================
+                # sort_frame = tk.Frame(self.text_area, bg=BG_COLOR)
+                # self.quase_sort_var = tk.StringVar(value=getattr(self, 'quase_sort_by', 'XP'))
+
+                # def apply_sort():
+                #     self.quase_sort_by = self.quase_sort_var.get()
+                #     self.save_config()
+                #     self.process_save(filepath, filename)
+
+                # tk.Radiobutton(sort_frame, text=t.get("radio_sort_xp", "Menor XP Restante"), variable=self.quase_sort_var, value="XP",
+                #                command=apply_sort, bg=BG_COLOR, fg="white", selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9), cursor="hand2").pack(side=tk.LEFT, padx=(0, 10))
+                # tk.Radiobutton(sort_frame, text=t.get("radio_sort_acc", "Menor Talento ACC"), variable=self.quase_sort_var, value="ACC",
+                #                command=apply_sort, bg=BG_COLOR, fg="white", selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9), cursor="hand2").pack(side=tk.LEFT)
+
+                # ========================================================
+                # COMBOBOX (OptionMenu) DE ORDENAÇÃO NA MESMA LINHA
+                # ========================================================
+                lbl_sort = tk.Label(filter_frame, text="Ordenar:", bg=BG_COLOR, fg="white", font=("Consolas", 9))
+                lbl_sort.pack(side=tk.LEFT, padx=(5, 2))
+
+                opt_xp = t.get("radio_sort_xp", "Menor XP Restante")
+                opt_acc = t.get("radio_sort_acc", "Menor Talento ACC")
+                
+                current_sort = opt_acc if getattr(self, 'quase_sort_by', 'XP') == "ACC" else opt_xp
+                self.quase_sort_var = tk.StringVar(value=current_sort)
+
+                def on_sort_change(*args):
+                    if self.quase_sort_var.get() == opt_acc:
+                        self.quase_sort_by = "ACC"
+                    else:
+                        self.quase_sort_by = "XP"
+                    self.save_config()
+                    self.process_save(filepath, filename)
+                
+                self.quase_sort_var.trace("w", on_sort_change)
+
+                sort_menu = tk.OptionMenu(filter_frame, self.quase_sort_var, opt_xp, opt_acc)
+                sort_menu.config(bg="#333333", fg="white", font=("Consolas", 9), relief=tk.FLAT, activebackground=BG_COLOR, activeforeground="white", highlightthickness=0, cursor="hand2")
+                sort_menu["menu"].config(bg="#333333", fg="white", font=("Consolas", 9))
+                sort_menu.pack(side=tk.LEFT)
+                # ========================================================
+                
                 self.text_area.config(state=tk.NORMAL)
                 self.text_area.window_create(tk.END, window=search_row)
                 self.text_area.insert(tk.END, "\n")
                 self.text_area.window_create(tk.END, window=controls_frame)
                 self.text_area.insert(tk.END, "\n")
                 self.text_area.window_create(tk.END, window=filter_frame)
-                self.text_area.insert(tk.END, "\n\n")
+                self.text_area.insert(tk.END, "\n")
+                # self.text_area.window_create(tk.END, window=sort_frame)
+                self.text_area.insert(tk.END, "\n")
                 self.text_area.config(state=tk.DISABLED)
 
                 combined_entries = []
                 for item in almost_list + remaining_list:
-                    name, level, talent, faltam_int, bar_str, faltam_str, loc, protected, uid, is_almost = item
+                    # 4. ADICIONADO: asc_talent no desempacotamento e no dicionário
+                    name, level, talent, faltam_int, bar_str, faltam_str, loc, protected, uid, is_almost, asc_talent = item
                     combined_entries.append({
                         "name": name,
                         "level": level,
@@ -1637,9 +2308,11 @@ class DigimonMonitorApp:
                         "is_almost": is_almost,
                         "is_wishlist": False,
                         "wishlist_idx": None,
+                        "asc_talent": asc_talent # <-- Adicionado
                     })
 
-                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected in wishlist_pending:
+                # 5. ADICIONADO: asc_talent no desempacotamento e no dicionário (Wishlist)
+                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected, asc_talent in wishlist_pending:
                     combined_entries.append({
                         "name": name,
                         "level": level,
@@ -1653,9 +2326,15 @@ class DigimonMonitorApp:
                         "is_almost": False,
                         "is_wishlist": True,
                         "wishlist_idx": w_idx,
+                        "asc_talent": asc_talent # <-- Adicionado
                     })
 
-                combined_entries.sort(key=lambda x: (x["remaining"], -x["goal_level"], x["name"].lower(), 0 if x["protected"] else 1, x["uid_sort"]))
+                # 6. ADICIONADO: Lógica condicional de ordenação
+                if getattr(self, 'quase_sort_by', 'XP') == "ACC":
+                    combined_entries.sort(key=lambda x: (x["asc_talent"], x["remaining"], -x["goal_level"], x["name"].lower(), 0 if x["protected"] else 1, x["uid_sort"]))
+                else:
+                    combined_entries.sort(key=lambda x: (x["remaining"], -x["goal_level"], x["name"].lower(), 0 if x["protected"] else 1, x["uid_sort"]))
+
                 search_text = getattr(self, 'quase_search_text', '').strip().lower()
                 filtered = []
                 for entry in combined_entries:
@@ -1686,10 +2365,15 @@ class DigimonMonitorApp:
                         name_str = raw_name if len(raw_name) <= MAX_NAME_LEN else raw_name[:MAX_NAME_LEN - 3] + "..."
                         # -------------------------------
         
-                        # line_text = f"{lock_icon} {entry['name']:<11} ({t['lvl_abbr']} {entry['level']:02d} / {goal_label} {entry['goal_level']:02d}) [{entry['bar_str']}] {t['faltam_abbr']} {entry['remaining_str']:>7} EXP "
-                        line_text = f"{lock_icon} {name_str:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {entry['level']:02d} / {goal_label:<6} {entry['goal_level']:02d}) [{entry['bar_str']}] {t['faltam_abbr']} {entry['remaining_str']:>7} EXP "
+                        # NOVA FORMATAÇÃO: T.A simplificado
+                        acc_formatted = f"{{{int(entry['asc_talent']):,} T.A}}".replace(',', '.')
+                        
+                        # NOVA FORMATAÇÃO: XP com 10 espaços e separador |
+                        line_text = f"{lock_icon} {name_str:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {entry['level']:02d} / {entry['goal_level']:02d}) [{entry['bar_str']}] {entry['remaining_str']:>10} EXP  |  {acc_formatted} "
+                        
                         line_tag = "almost" if entry["is_almost"] else "status"
                         self.text_area.insert(tk.END, line_text, line_tag)
+                        
                         if entry["is_wishlist"] and entry.get("wishlist_idx") is not None:
                             btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=entry["wishlist_idx"]: self.delete_wishlist_item(idx),
                                                 bg="#444444", fg="red", font=("Consolas", 8, "bold"),
@@ -1709,13 +2393,17 @@ class DigimonMonitorApp:
             if getattr(self, 'show_lv99', False):
                 for loc in ["PARTY", "BOX", "FAZENDA"]:
                     lv99_list[loc].sort(key=lambda x: (x[0], x[1]))
-                    for name, level, talent, protected in lv99_list[loc]:
+                    # 8. ADICIONADO: asc_talent no desempacotamento e string
+                    for name, level, talent, protected, asc_talent in lv99_list[loc]:
                         cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                         lock_icon = "🔒" if protected else "  "
+                        
+                        # NOVA FORMATAÇÃO: T.A simplificado
+                        acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
+                        
                         self.log([
                             (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                            #(f"{lock_icon} {name:<15} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
-                            (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d})", "status")
+                            (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {talent:02d}) {acc_formatted}", "status")
                         ])
 
         def render_wishlist_list(is_first, is_last):
@@ -1727,18 +2415,21 @@ class DigimonMonitorApp:
             render_header_with_controls(wishlist_title_text, "header_orange", 'show_wishlist', 'btn_show_wishlist', 'wishlist', is_first, is_last)
 
             if getattr(self, 'show_wishlist', False):
-                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected in wishlist_pending:
+                # 9. ADICIONADO: asc_talent no desempacotamento e string
+                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected, asc_talent in wishlist_pending:
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                     lock_icon = "🔒" if protected else "  "
 
                     self.text_area.config(state=tk.NORMAL)
                     self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
 
-                    # msg = f"{lock_icon} {name:<11} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
-                    msg = f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {t['target_abbr']} {target_lvl:02d}) [{bar_str}] {t['faltam_abbr']} {faltam_str:>7} EXP "
+                    # NOVA FORMATAÇÃO: T.A simplificado
+                    acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
+                    
+                    # NOVA FORMATAÇÃO: XP com 10 espaços e separador |
+                    msg = f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {target_lvl:02d}) [{bar_str}] {faltam_str:>10} EXP  |  {acc_formatted} "
                     self.text_area.insert(tk.END, msg, "status")
 
-                    # Botão Deletar Inline [X]
                     btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
                                         bg="#444444", fg="red", font=("Consolas", 8, "bold"), 
                                         relief=tk.FLAT, cursor="hand2", padx=2, pady=0)
@@ -1754,24 +2445,32 @@ class DigimonMonitorApp:
             self.text_area.insert(tk.END, t.get("cap_list_title", " 🏁 REACHED THE CAP:"), "header_red")
             self.text_area.insert(tk.END, "\n\n")
             self.text_area.config(state=tk.DISABLED)
+            
+            # 10. ADICIONADO: asc_talent no desempacotamento de entry_data e nas strings
             for entry_type, loc, *entry_data in reached_rows:
                 if entry_type == "alert":
-                    name, level, talent, protected = entry_data
+                    name, level, talent, protected, asc_talent = entry_data
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                     lock_icon = "🔒" if protected else "  "
+                    
+                   # NOVA FORMATAÇÃO: T.A simplificado
+                    acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
+                    
                     self.log([
                         (f" [{loc_lbl[loc]:^7}] ", cor_tag),
-                        #(f"{lock_icon} {name:<15} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
-                        (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {t['limite_abbr']} {talent:02d}) {txt_atingiu}", "alert")
+                        (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {talent:02d}) {acc_formatted} {txt_atingiu}", "alert")
                     ])
                 else:
-                    w_idx, w_name, w_level, w_target, w_protected = entry_data
+                    w_idx, w_name, w_level, w_target, w_protected, asc_talent = entry_data
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                     w_lock_icon = "🔒" if w_protected else "  "
+                    
+                    # NOVA FORMATAÇÃO: T.A simplificado
+                    w_acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
+                    
                     self.text_area.config(state=tk.NORMAL)
                     self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
-                    #self.text_area.insert(tk.END, f"{w_lock_icon} {w_name:<15} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_atingiu} ", "status")
-                    self.text_area.insert(tk.END, f"{w_lock_icon} {w_name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {w_level:02d} / {t['target_abbr']} {w_target:02d}) {txt_atingiu} ", "status")
+                    self.text_area.insert(tk.END, f"{w_lock_icon} {w_name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {w_level:02d} / {w_target:02d}) {w_acc_formatted} {txt_atingiu} ", "status")
                     btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
                                         bg="#444444", fg="red", font=("Consolas", 8, "bold"),
                                         relief=tk.FLAT, cursor="hand2", padx=2, pady=0)
