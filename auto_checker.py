@@ -16,6 +16,16 @@ try:
 except ImportError:
     XLWINGS_AVAILABLE = False
 
+# keyboard é opcional: usado só pro atalho global de sincronização (funciona
+# mesmo com o programa em segundo plano/minimizado). Se não estiver
+# instalado, o programa continua funcionando normalmente, só sem o atalho.
+# Instalar com: pip install keyboard --break-system-packages
+try:
+    import keyboard
+    KEYBOARD_AVAILABLE = True
+except ImportError:
+    KEYBOARD_AVAILABLE = False
+
 # ==========================================
 # BANCO DE DADOS: IDS E CURVAS DE EXP
 # ==========================================
@@ -56,8 +66,11 @@ DIGIMON_SIZE = 336
 # INTEGRAÇÃO COM EXCEL (xlwings)
 # ==========================================
 EXCEL_SYNC_ENABLED = False
-COMPARADOR_SYNC = False   # Se True, roda a comparação de Talento Ascendente ("Comparações_Talento") junto do sync.
-ALERT_MSG_SYNC = False   # Se True, pergunta antes de popular a aba de comparação. Se False, roda direto (sem caixa de alerta).
+COMPARADOR_SYNC = False   # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
+ALERT_MSG_SYNC = False   # OBSOLETO: não é mais usado. Antes controlava a caixa de confirmação de um botão único que fazia
+                          # sync de Talentos + Comparador junto. Agora são dois botões separados (ver btn_sync_talentos /
+                          # btn_sync_comparador), então clicar no botão certo já é a confirmação. Mantido só pra não quebrar
+                          # nada que você referencie em outro lugar - pode remover se quiser.
 
 # Caminho genérico de exemplo
 EXCEL_FILE_PATH = r"C:\caminho\para\sua\planilha.xlsm" 
@@ -68,14 +81,44 @@ try:
 except ImportError:
     pass  # Se o arquivo não existir, ignora e usa o caminho genérico acima
 
-EXCEL_SHEET_NAME = None      # None = usa a aba ativa do arquivo
+EXCEL_SHEET_NAME = "Digimons"  # Nome FIXO da aba principal (Coluna F/V/W). Ajuste aqui se o nome da sua aba for outro.
+# IMPORTANTE: antes esse valor era None, o que fazia o código usar
+# book.sheets.active (a aba que estivesse VISÍVEL no Excel no momento do
+# clique). Isso causava dois problemas: (1) se você estivesse numa aba
+# diferente (ex.: "Comparações_Talento"), o sync procurava os nomes na
+# Coluna F *dessa* aba errada, não achava nada e voltava sem fazer nada -
+# parecendo "rápido" mas na real não sincronizando. (2) escrever numa aba
+# que está ativa/visível é mais lento (Excel atualiza seleção/formatação
+# condicional a cada escrita) do que escrever numa aba em segundo plano.
+# Fixando o nome, o sync sempre mira a aba certa, esteja ela visível ou não.
 EXCEL_COL_NAME = 6           # Coluna F (nome do Digimon)
 EXCEL_COL_ASCENDANT = 22     # Coluna V (ascendant_talent_raw)
+EXCEL_COL_LEVEL = 23         # Coluna W (level) 
 EXCEL_HEADER_ROW = 1         # Primeira linha considerada dado (pule se tiver cabeçalho maior)
 
 # Aba auxiliar que guarda o histórico de talento ascendente ao longo do tempo,
 # pra ajudar a entender como esse status se comporta.
 EXCEL_COMPARISON_SHEET_NAME = "Comparações_Talento"
+MAX_COMPARACOES = 4          # Total de comparações na tabela de comparações de talento
+
+# ==========================================
+# ATALHO GLOBAL DE TECLADO (opcional)
+# ==========================================
+# Dispara o botão azul "🔄 Sync Main Sheet" com uma tecla, mesmo com o
+# programa em segundo plano/minimizado (não precisa a janela estar em foco).
+# Isso usa a lib "keyboard" (hook de teclado em baixo nível do Windows), que
+# é opcional - se não estiver instalada, o atalho simplesmente não é
+# registrado e o resto do programa funciona normal.
+#
+# Recomendo usar F13-F20: são teclas que praticamente não existem em teclado
+# físico nenhum, então nunca vão conflitar com outro atalho seu. Dá pra
+# mapear pra um botão de controle/joystick usando um software de macro (ex.:
+# reWASD, AutoHotkey, JoyToKey, etc.) apontando pra uma dessas teclas.
+#
+# Nomes aceitos pela lib keyboard: "f13", "f14", ..., "f24". Combinações
+# também funcionam, ex.: "ctrl+f13", "ctrl+shift+f13".
+HOTKEY_SYNC_ENABLED = False
+HOTKEY_SYNC_TALENTOS = "f18"   # <- troque aqui pra tecla que você quiser
 
 # CORES DARK MODE
 BG_COLOR = "#121212"
@@ -109,17 +152,22 @@ I18N = {
         "modo_auto": "Automatic Mode",
         "modo_manual": "Manual Mode (Ignore auto-save)",
         "btn_change_folder": "📂 Change Save Folder",
-        "btn_sync_excel": "🔄 Sync Excel",
-        "btn_sync_excel_running": "🔄 Syncing...",
+        "btn_sync_talentos": "🔄 Sync Main Sheet",
+        "btn_sync_talentos_running": "🔄 Syncing...",
+        "btn_sync_comparador": "📊 Sync Comparator",
+        "btn_sync_comparador_running": "📊 Syncing...",
         "msg_sync_excel_ok": "✅ Excel updated: ",
         "msg_sync_excel_none": "ℹ️ No protected Digimon matched in the spreadsheet.",
         "msg_sync_excel_disabled": "⚠️ Excel sync is disabled (EXCEL_SYNC_ENABLED = False).",
         "msg_sync_excel_no_data": "⚠️ No save data loaded yet. Read a save first.",
-        "ask_sync_comparison_title": "Update comparison tab?",
-        "ask_sync_comparison_body": "Do you also want to update the \"Comparações_Talento\" tab with a new Ascendant Talent comparison round?",
-        "msg_comparison_created": " 📊 \"Comparações_Talento\" tab created and populated ({count}).",
-        "msg_comparison_updated": " 📊 Comparison round added to \"Comparações_Talento\" ({count} updated, {new} new).",
-        "msg_comparison_error": " ⚠️ [Comparison Sheet] Failed to update: ",
+        "msg_hotkey_registered": "⌨️ Global hotkey active: {key} (works in background).",
+        "msg_hotkey_failed": "⚠️ Failed to register global hotkey ({key}): ",
+        "msg_hotkey_no_lib": "ℹ️ \"keyboard\" lib not installed - global hotkey disabled (pip install keyboard).",
+        "msg_comparador_disabled": "⚠️ Comparator is disabled\n(COMPARADOR_SYNC = False).",
+        "msg_comparison_reset": " 🔄 Cycle reset! Last talents moved to columns A & B ({count}).\nNext click will start new comparisons.",
+        "msg_comparison_created": " 📊 \"Comparações_Talento\" tab created\nand populated ({count}).",
+        "msg_comparison_updated": " 📊 Comparison round added to\n\"Comparações_Talento\" ({count} updated, {new} new).",
+        "msg_comparison_error": " ⚠️ [Comparison Sheet]\nFailed to update: ",
         "lbl_inspect": "Inspect Save:",
         "lbl_paused": "⚠️ PAUSED",
         "btn_resume": "RESUME TRACKING",
@@ -211,17 +259,22 @@ I18N = {
         "modo_auto": "Modo Automático",
         "modo_manual": "Modo Manual (Ignora o Auto-Save)",
         "btn_change_folder": "📂 Mudar Pasta de Saves",
-        "btn_sync_excel": "🔄 Sincronizar Excel",
-        "btn_sync_excel_running": "🔄 Sincronizando...",
+        "btn_sync_talentos": "🔄 Sync Planilha Principal",
+        "btn_sync_talentos_running": "🔄 Sincronizando...",
+        "btn_sync_comparador": "📊 Sync Comparador",
+        "btn_sync_comparador_running": "📊 Sincronizando...",
         "msg_sync_excel_ok": "✅ Excel atualizado: ",
         "msg_sync_excel_none": "ℹ️ Nenhum Digimon protegido encontrado na planilha.",
         "msg_sync_excel_disabled": "⚠️ Sync com Excel está desativado (EXCEL_SYNC_ENABLED = False).",
         "msg_sync_excel_no_data": "⚠️ Nenhum save carregado ainda. Leia um save primeiro.",
-        "ask_sync_comparison_title": "Atualizar aba de comparação?",
-        "ask_sync_comparison_body": "Deseja também atualizar a aba \"Comparações_Talento\" com uma nova rodada de comparação de Talento Ascendente?",
-        "msg_comparison_created": " 📊 Aba \"Comparações_Talento\" criada e populada ({count}).",
-        "msg_comparison_updated": " 📊 Rodada de comparação adicionada em \"Comparações_Talento\" ({count} atualizados, {new} novos).",
-        "msg_comparison_error": " ⚠️ [Aba de Comparação] Falha ao atualizar: ",
+        "msg_hotkey_registered": "⌨️ Atalho global ativo: {key} (funciona em segundo plano).",
+        "msg_hotkey_failed": "⚠️ Falha ao registrar o atalho global ({key}): ",
+        "msg_hotkey_no_lib": "ℹ️ Lib \"keyboard\" não instalada - atalho global desativado (pip install keyboard).",
+        "msg_comparador_disabled": "⚠️ Comparador está desativado\n(COMPARADOR_SYNC = False).",
+        "msg_comparison_reset": " 🔄 Ciclo reiniciado! Últimos talentos movidos para as colunas A e B ({count}).\nO próximo clique iniciará novas comparações.",
+        "msg_comparison_created": " 📊 Aba \"Comparações_Talento\" criada\ne populada ({count}).",
+        "msg_comparison_updated": " 📊 Rodada de comparação adicionada em\n\"Comparações_Talento\" ({count} atualizados, {new} novos).",
+        "msg_comparison_error": " ⚠️ [Aba de Comparação]\nFalha ao atualizar: ",
         "lbl_inspect": "Inspecionar Save:",
         "lbl_paused": "⚠️ PAUSADO",
         "btn_resume": "VOLTAR A RASTREAR",
@@ -330,6 +383,7 @@ class DigimonMonitorApp:
         self.quase_sort_by = self.config_data.get("quase_sort_by", "XP") # XP ou ACC
 
         self.setup_ui()
+        self.setup_global_hotkey()
         self.update_loop()
 
     def initialize_config(self):
@@ -409,6 +463,7 @@ class DigimonMonitorApp:
 
     def on_closing(self):
         self.save_config()
+        self.teardown_global_hotkey()
         self.root.destroy()
 
     def get_normalized_list_order(self):
@@ -464,8 +519,10 @@ class DigimonMonitorApp:
         self.rb_auto.config(text=t["modo_auto"])
         self.rb_manual.config(text=t["modo_manual"])
         self.btn_change_folder.config(text=t["btn_change_folder"])
-        if not getattr(self, "_sync_excel_running", False):
-            self.btn_sync_excel.config(text=t["btn_sync_excel"])
+        if not getattr(self, "_sync_talentos_running", False):
+            self.btn_sync_talentos.config(text=t["btn_sync_talentos"])
+        if not getattr(self, "_sync_comparador_running", False):
+            self.btn_sync_comparador.config(text=t["btn_sync_comparador"])
         self.lbl_inspect.config(text=t["lbl_inspect"])
         self.lbl_paused.config(text=t["lbl_paused"])
         self.btn_resume.config(text=t["btn_resume"])
@@ -554,15 +611,33 @@ class DigimonMonitorApp:
         # ==========================================
         # INTEGRAÇÃO EXCEL (CONDICIONAL)
         # ==========================================
-        self.btn_sync_excel = tk.Button(control_frame, text=I18N[self.lang]["btn_sync_excel"], command=self.on_sync_excel_click,
-                                  bg="#1F6FEB", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT)
+        # Dois botões independentes lado a lado, cada um com uma única
+        # responsabilidade (nunca um botão fazendo duas coisas):
+        # - btn_sync_talentos: só sincroniza Talento/Level na planilha principal.
+        # - btn_sync_comparador: só roda a aba "Comparações_Talento".
+        # Cada um abre/usa sua própria conexão com o Excel, então clicar num
+        # não espera nem atrapalha o outro.
+        sync_buttons_frame = tk.Frame(control_frame, bg=PANEL_BG)
+
+        self.btn_sync_talentos = tk.Button(
+            sync_buttons_frame, text=I18N[self.lang]["btn_sync_talentos"], command=self.on_sync_talentos_click,
+            bg="#1F6FEB", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT
+        )
+        self.btn_sync_comparador = tk.Button(
+            sync_buttons_frame, text=I18N[self.lang]["btn_sync_comparador"], command=self.on_sync_comparador_click,
+            bg="#8A2BE2", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT
+        )
+
         self.lbl_sync_status = tk.Label(control_frame, text="", bg=PANEL_BG, fg=FG_COLOR,
                                          font=("Consolas", 9, "bold"))
         self._sync_status_after_id = None
 
-        # O botão e o status só ganham layout (pack) se a flag estiver True
+        # Os botões e o status só ganham layout (pack) se a flag estiver True
         if EXCEL_SYNC_ENABLED:
-            self.btn_sync_excel.pack(pady=(0, 2), padx=15, fill=tk.X)
+            sync_buttons_frame.pack(pady=(0, 2), padx=15, fill=tk.X)
+            self.btn_sync_talentos.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 3))
+            if COMPARADOR_SYNC:
+                self.btn_sync_comparador.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(3, 0))
             self.lbl_sync_status.pack(pady=(0, 5), padx=15, fill=tk.X)
         # ==========================================
 
@@ -746,15 +821,6 @@ class DigimonMonitorApp:
             return ""
         return data[uid_start:uid_end].hex().upper()
 
-    # def read_digimon_protected(self, data, name_offset):
-    #     """Lê o status de proteção (cadeado) do Digimon. Offset achado via Cheat Engine:
-    #     Protection = Talent (name_offset + 0x100) + 0x1C = name_offset + 0x11C.
-    #     1 = protegido, 0 = desprotegido."""
-    #     offset = name_offset + 0x11C
-    #     if offset + 4 > len(data):
-    #         return False
-    #     return struct.unpack_from("<I", data, offset)[0] == 1
-
     def read_digimon_protected(self, data, name_offset):
         """Lê o status de proteção (cadeado) do Digimon. Offset achado via Cheat Engine:
         Protection = Talent (name_offset + 0x100) + 0x1C = name_offset + 0x11C.
@@ -770,21 +836,46 @@ class DigimonMonitorApp:
         # Retorna True apenas se o bit correspondente ao valor 1 estiver ativo
         return (status_value & 1) != 0
     
-    def sync_protected_talents_to_excel(self, active_digimons, populate_comparison=False):
+    def _connect_to_excel_app_and_book(self):
         """
-        Sincroniza o ascendant_talent_raw dos Digimons protegidos com a
+        Acha (ou abre) o app/book do Excel referente a EXCEL_FILE_PATH.
+        Compartilhado pelos dois botões de sync (Talentos e Comparador),
+        já que ambos precisam da mesma lógica de conexão. Levanta exceção
+        se não achar/abrir o arquivo - quem chama deve envolver em try/except.
+        """
+        app = None
+        book = None
+        target_name = os.path.basename(EXCEL_FILE_PATH).lower()
+        for running_app in xw.apps:
+            for bk in running_app.books:
+                if bk.name.lower() == target_name:
+                    app = running_app
+                    book = bk
+                    break
+            if book:
+                break
+
+        if book is None:
+            app = xw.apps.active if xw.apps else xw.App(visible=True)
+            book = app.books.open(EXCEL_FILE_PATH)
+
+        return app, book
+
+    def sync_protected_talents_to_excel(self, active_digimons):
+        """
+        Sincroniza o ascendant_talent_raw e o level dos Digimons protegidos com a
         planilha timestranger.xlsm, mantendo o Excel aberto (via xlwings).
 
-        IMPORTANTE: este método é chamado sob demanda (botão "🔄 Sync Excel"),
+        Só mexe na aba principal (EXCEL_SHEET_NAME) - a aba "Comparações_Talento"
+        tem seu próprio botão/método (sync_comparador_to_excel), pra um botão
+        nunca fazer duas coisas ao mesmo tempo e pra cada sync ser o mais leve
+        e rápido possível no que faz.
+
+        IMPORTANTE: este método é chamado sob demanda (botão "🔄 Sync Main Sheet"),
         rodando numa thread separada da UI - por isso ele NÃO toca em nenhum
         widget do tkinter diretamente (nem self.log). Em vez disso, devolve
         um dict de resultado; quem atualiza a tela é o handler do botão
-        (on_sync_excel_click), via self.root.after(...).
-
-        Se populate_comparison=True, depois de atualizar a planilha principal
-        também popula/atualiza a aba "Comparações_Talento" (histórico de
-        talento ascendente ao longo do tempo), reaproveitando a MESMA conexão
-        já aberta com o Excel (sem custo extra de abrir o arquivo de novo).
+        (on_sync_talentos_click), via self.root.after(...).
 
         Performático porque:
         - Só roda quando o usuário pede (não mais a cada leitura de save,
@@ -792,52 +883,41 @@ class DigimonMonitorApp:
         - Lê a Coluna F inteira de uma vez (1 chamada COM) e monta um dict
           nome -> linha em memória, em vez de buscar célula por célula.
         - Escreve em lote (um único range 2D), em vez de 1 write por Digimon.
-        - Desliga screen_updating/cálculo automático durante a escrita e
-          restaura no final, mesmo se der erro.
+        - Desliga screen_updating/cálculo/eventos automáticos durante a
+          escrita e restaura no final, mesmo se der erro.
+        - Mira sempre a aba EXCEL_SHEET_NAME (nome fixo), não a aba que
+          estiver visível/ativa no Excel no momento do clique.
 
         Retorna: {'status': 'disabled'|'no_lib'|'no_protected'|'no_match'|'ok'|'error',
-                  'count': int, 'error': str|None,
-                  'comparison': {'status':.., 'count':.., 'new':.., 'error':..} | None}
+                  'count': int, 'error': str|None}
         """
         if not EXCEL_SYNC_ENABLED:
-            return {'status': 'disabled', 'count': 0, 'error': None, 'comparison': None}
+            return {'status': 'disabled', 'count': 0, 'error': None}
         if not XLWINGS_AVAILABLE:
-            return {'status': 'no_lib', 'count': 0, 'error': None, 'comparison': None}
+            return {'status': 'no_lib', 'count': 0, 'error': None}
 
         protegidos = [d for d in active_digimons.values() if d.get('protected')]
         if not protegidos:
-            return {'status': 'no_protected', 'count': 0, 'error': None, 'comparison': None}
+            return {'status': 'no_protected', 'count': 0, 'error': None}
 
         app = None
-        book = None
         prev_screen_updating = None
         prev_calculation = None
-        comparison_result = None
+        prev_enable_events = None
 
         try:
-            # Procura o arquivo já aberto entre as instâncias do Excel em execução
-            # (não abre uma cópia nova nem uma instância invisível separada).
-            target_name = os.path.basename(EXCEL_FILE_PATH).lower()
-            for running_app in xw.apps:
-                for bk in running_app.books:
-                    if bk.name.lower() == target_name:
-                        app = running_app
-                        book = bk
-                        break
-                if book:
-                    break
-
-            if book is None:
-                # Não está aberto: abre agora (visível, pra não surpreender o usuário).
-                app = xw.apps.active if xw.apps else xw.App(visible=True)
-                book = app.books.open(EXCEL_FILE_PATH)
-
+            app, book = self._connect_to_excel_app_and_book()
             sheet = book.sheets[EXCEL_SHEET_NAME] if EXCEL_SHEET_NAME else book.sheets.active
 
             prev_screen_updating = app.screen_updating
             prev_calculation = app.calculation
+            prev_enable_events = app.api.EnableEvents
             app.screen_updating = False
             app.calculation = 'manual'
+            # Desliga eventos do Excel (ex.: macros de Worksheet_Change) durante
+            # a escrita. Num .xlsm com macros, cada célula escrita pode disparar
+            # uma macro e isso é uma causa clássica de sync lento.
+            app.api.EnableEvents = False
 
             used_range = sheet.used_range
             last_row = used_range.last_cell.row
@@ -848,7 +928,6 @@ class DigimonMonitorApp:
             if last_row < EXCEL_HEADER_ROW:
                 main_status = 'no_match'
             else:
-                # Lê a Coluna F inteira numa única chamada
                 col_values = sheet.range(
                     (EXCEL_HEADER_ROW, EXCEL_COL_NAME),
                     (last_row, EXCEL_COL_NAME)
@@ -861,14 +940,16 @@ class DigimonMonitorApp:
                     if val:
                         name_to_row[str(val).strip().upper()] = EXCEL_HEADER_ROW + idx
 
-                # Monta a lista de linhas a atualizar (evita gravar linhas não-contíguas 1 a 1
-                # quando dá pra agrupar num único range)
+                # Armazena tanto o talento quanto o level para cada linha correspondente
                 row_updates = {}
                 for dig in protegidos:
                     name_key = str(dig.get('name', '')).strip().upper()
                     row = name_to_row.get(name_key)
                     if row:
-                        row_updates[row] = dig.get('ascendant_talent')
+                        row_updates[row] = [
+                            dig.get('ascendant_talent'),
+                            dig.get('level')
+                        ]
 
                 if not row_updates:
                     main_status = 'no_match'
@@ -876,33 +957,37 @@ class DigimonMonitorApp:
                     rows_sorted = sorted(row_updates.keys())
                     first_row, last_row_update = rows_sorted[0], rows_sorted[-1]
 
-                    # Se as linhas encontradas formam (ou quase formam) um bloco contíguo,
-                    # escreve tudo de uma vez com um único range 2D.
-                    # Caso contrário, escreve linha a linha (ainda rápido pois já é pouco volume).
-                    if last_row_update - first_row + 1 == len(rows_sorted):
-                        block_values = [[row_updates[r]] for r in rows_sorted]
-                        sheet.range(
-                            (first_row, EXCEL_COL_ASCENDANT),
-                            (last_row_update, EXCEL_COL_ASCENDANT)
-                        ).value = block_values
-                    else:
-                        for row, value in row_updates.items():
-                            sheet.range((row, EXCEL_COL_ASCENDANT)).value = value
+                    # OTIMIZAÇÃO: em vez de checar se as linhas são
+                    # contíguas e cair pra 1-chamada-por-linha quando não
+                    # são (o caso comum, já que protegidos ficam espalhados
+                    # entre não-protegidos na lista), sempre fazemos:
+                    #   1) 1 leitura do bloco inteiro (primeira à última
+                    #      linha protegida, colunas Ascendant+Level)
+                    #   2) sobrescreve em memória só as linhas dos
+                    #      protegidos (as demais mantêm o valor lido)
+                    #   3) 1 escrita do bloco inteiro de volta
+                    # Total: sempre 2 chamadas COM, não importa quão
+                    # espalhadas as linhas estejam.
+                    block_range = sheet.range(
+                        (first_row, EXCEL_COL_ASCENDANT),
+                        (last_row_update, EXCEL_COL_LEVEL)
+                    )
+                    current_block = block_range.value
+                    if not isinstance(current_block, list):
+                        current_block = [[current_block]]
+                    elif current_block and not isinstance(current_block[0], list):
+                        current_block = [current_block]
 
+                    for row, values in row_updates.items():
+                        current_block[row - first_row] = values
+
+                    block_range.value = current_block
                     main_count = len(row_updates)
 
-            # A aba de comparação não depende de nomes baterem com a Coluna F
-            # da planilha principal - ela usa os dados já lidos do save
-            # (loc/name/ascendant_talent) diretamente, então roda mesmo que
-            # o sync principal não tenha achado correspondência (main_status
-            # == 'no_match').
-            if populate_comparison:
-                comparison_result = self._sync_comparison_sheet(book, protegidos)
-
-            return {'status': main_status, 'count': main_count, 'error': None, 'comparison': comparison_result}
+            return {'status': main_status, 'count': main_count, 'error': None}
 
         except Exception as e:
-            return {'status': 'error', 'count': 0, 'error': str(e), 'comparison': comparison_result}
+            return {'status': 'error', 'count': 0, 'error': str(e)}
         finally:
             if app is not None:
                 try:
@@ -910,6 +995,64 @@ class DigimonMonitorApp:
                         app.calculation = prev_calculation
                     if prev_screen_updating is not None:
                         app.screen_updating = prev_screen_updating
+                    if prev_enable_events is not None:
+                        app.api.EnableEvents = prev_enable_events
+                except Exception:
+                    pass
+
+    def sync_comparador_to_excel(self, active_digimons):
+        """
+        Roda SÓ a aba "Comparações_Talento" (histórico/comparação de Talento
+        Ascendente) - não toca na planilha principal. Botão separado
+        (btn_sync_comparador), conexão própria com o Excel, independente do
+        sync de Talentos/Level.
+
+        Chamado numa thread separada; não toca em widgets do tkinter
+        diretamente (mesma lógica de segurança de thread do outro sync).
+
+        Retorna o dict de status de _sync_comparison_sheet diretamente:
+        {'status': 'created'|'updated'|'reset'|'disabled'|'no_lib'|'no_protected'|'error',
+         'count': int, 'new': int, 'error': str|None}
+        """
+        if not EXCEL_SYNC_ENABLED:
+            return {'status': 'disabled', 'count': 0, 'new': 0, 'error': None}
+        if not COMPARADOR_SYNC:
+            return {'status': 'disabled', 'count': 0, 'new': 0, 'error': None}
+        if not XLWINGS_AVAILABLE:
+            return {'status': 'no_lib', 'count': 0, 'new': 0, 'error': None}
+
+        protegidos = [d for d in active_digimons.values() if d.get('protected')]
+        if not protegidos:
+            return {'status': 'no_protected', 'count': 0, 'new': 0, 'error': None}
+
+        app = None
+        prev_screen_updating = None
+        prev_calculation = None
+        prev_enable_events = None
+
+        try:
+            app, book = self._connect_to_excel_app_and_book()
+
+            prev_screen_updating = app.screen_updating
+            prev_calculation = app.calculation
+            prev_enable_events = app.api.EnableEvents
+            app.screen_updating = False
+            app.calculation = 'manual'
+            app.api.EnableEvents = False
+
+            return self._sync_comparison_sheet(book, protegidos)
+
+        except Exception as e:
+            return {'status': 'error', 'count': 0, 'new': 0, 'error': str(e)}
+        finally:
+            if app is not None:
+                try:
+                    if prev_calculation is not None:
+                        app.calculation = prev_calculation
+                    if prev_screen_updating is not None:
+                        app.screen_updating = prev_screen_updating
+                    if prev_enable_events is not None:
+                        app.api.EnableEvents = prev_enable_events
                 except Exception:
                     pass
 
@@ -919,6 +1062,13 @@ class DigimonMonitorApp:
         Trabalha em Ciclos de 5 rodadas: ao chegar na 5ª, ele reinicia
         a tabela transformando o resultado na nova Coluna A e B.
         Ordena automaticamente do maior ganho para o menor.
+        
+        Popula/atualiza a aba "Comparações_Talento" mantendo a estrutura limpa.
+        - Preserva as cores (azul/vermelho) de TODAS as colunas de comparação.
+        - Ordena por:
+          1ª Prioridade: Aumento de talento (maior aumento primeiro)
+          2ª Prioridade: Menor talento atual após a comparação
+          3ª Prioridade: Ordem alfabética
         
 
         Chamada de dentro de sync_protected_talents_to_excel, reaproveitando
@@ -942,7 +1092,7 @@ class DigimonMonitorApp:
             sheet_names = [s.name for s in book.sheets]
 
             # -------------------------------------------------------------
-            # FUNÇÃO AUXILIAR PARA CRIAR O BASELINE (Aba nova, vazia ou Reset)
+            # FUNÇÃO AUXILIAR PARA CRIAR O BASELINE (Aba inexistente ou vazia)
             # -------------------------------------------------------------
             def _create_baseline(sheet_obj):
                 sheet_obj.clear()
@@ -954,15 +1104,16 @@ class DigimonMonitorApp:
                     rows.append({
                         'label': f"[ {local} ] {name}",
                         'name': name,
-                        'talent': talent
+                        'talent': talent if isinstance(talent, (int, float)) else 999999999
                     })
                 
-                # Ordena alfabeticamente pelo nome para o estado inicial
-                rows.sort(key=lambda x: x['name'].upper())
+                # Ordena baseline por menor talento, depois alfabético
+                rows.sort(key=lambda x: (x['talent'], x['name'].upper()))
 
                 grid = [["Digimon", "Talento Inicial"]]
                 for r in rows:
-                    grid.append([r['label'], r['talent']])
+                    t_val = r['talent'] if r['talent'] != 999999999 else ""
+                    grid.append([r['label'], t_val])
 
                 sheet_obj.range((1, 1)).value = grid
                 sheet_obj.autofit()
@@ -999,12 +1150,74 @@ class DigimonMonitorApp:
 
             rounds_so_far = len(talent_cols_indices)
             last_talent_idx = talent_cols_indices[-1] if talent_cols_indices else 1
+            
+            name_pattern = re.compile(r'^\[\s*[^\]]*\]\s*(.*)$')
 
             # -------------------------------------------------------------
-            # REINÍCIO DE CICLO (RODADA 5 -> RESET PARA COLUNAS A E B)
+            # REINÍCIO DE CICLO (RODADA MÁXIMA -> RESET VISUAL PARA COLUNAS A E B)
             # -------------------------------------------------------------
-            if rounds_so_far >= 4:
-                return _create_baseline(sheet)
+            if rounds_so_far >= MAX_COMPARACOES:
+                # Transfere APENAS os dados da última rodada registrada na planilha
+                # para a Coluna A e B. Ignora a extração atual (protegidos) para não 
+                # perder a visualização de comparação. O usuário clica de novo após o reset.
+                sheet.clear()
+
+                # Índice nome_puro -> Digimon protegido NESTA extração, pra
+                # conseguir atualizar o [ Local ] de cada linha pro local
+                # ATUAL (o antigo "[ Local ] Nome" da Coluna A guarda o
+                # local de quando aquela linha foi escrita, que pode já
+                # estar desatualizado - ex.: Digimon saiu da PARTY e foi
+                # pra BOX entre uma sincronização e outra).
+                protegido_by_name = {
+                    str(d.get('name', '')).strip().upper(): d for d in protegidos
+                }
+
+                rows_reset = []
+                for row in full_data[1:]:
+                    row_cells = list(row)
+                    raw_label = row_cells[0] if len(row_cells) > 0 else ""
+                    old_talent_val = row_cells[last_talent_idx] if len(row_cells) > last_talent_idx else None
+                    
+                    if raw_label:
+                        m = name_pattern.match(str(raw_label))
+                        bare_name = m.group(1).strip() if m else str(raw_label).strip()
+
+                        # Atualiza o [ Local ] pro local ATUAL do Digimon, se
+                        # ele ainda estiver protegido nesta extração. Se não
+                        # estiver mais protegido/não foi encontrado, mantém
+                        # o label antigo como estava (não temos como saber
+                        # o local atual dele).
+                        dig_atual = protegido_by_name.get(bare_name.upper())
+                        if dig_atual is not None:
+                            novo_local = dig_atual.get('loc', '?')
+                            label_atualizado = f"[ {novo_local} ] {bare_name}"
+                        else:
+                            label_atualizado = str(raw_label).strip()
+
+                        rows_reset.append({
+                            'label': label_atualizado,
+                            'name': bare_name,
+                            'talent': old_talent_val if isinstance(old_talent_val, (int, float)) else 999999999
+                        })
+                
+                # Mantém a ordenação: 1º menor talento, 2º ordem alfabética
+                rows_reset.sort(key=lambda x: (x['talent'], x['name'].upper()))
+
+                grid_reset = [["Digimon", "Talento Inicial"]]
+                for r in rows_reset:
+                    t_val = r['talent'] if r['talent'] != 999999999 else ""
+                    grid_reset.append([r['label'], t_val])
+
+                sheet.range((1, 1)).value = grid_reset
+                sheet.autofit()
+                
+                try:
+                    sheet.api.AutoFilterMode = False
+                    sheet.range("A1:B1").api.AutoFilter(1)
+                except Exception: pass
+                
+                # Retorna um status de reset para sinalizar que reorganizou
+                return {'status': 'reset', 'count': len(rows_reset), 'new': 0, 'error': None}
 
             # -------------------------------------------------------------
             # RODADA NORMAL (Adiciona Comparação X e Talento X)
@@ -1016,7 +1229,6 @@ class DigimonMonitorApp:
             new_headers = list(headers) + [new_comp_header, new_value_header]
             
             protegido_by_name = {str(d.get('name', '')).strip().upper(): d for d in protegidos}
-            name_pattern = re.compile(r'^\[\s*[^\]]*\]\s*(.*)$')
 
             processed_rows = []
             matched_names = set()
@@ -1038,23 +1250,19 @@ class DigimonMonitorApp:
                 if dig is None:
                     comp_text = f"[ ? ] {bare_name} - Digimon não encontrado nesta rodada"
                     new_talent = ""
-                    diff = -999999 # Coloca no fim da lista
-                    color = None
+                    diff = -999999
                 else:
                     matched_names.add(key)
                     local = dig.get('loc', '?')
                     new_talent = dig.get('ascendant_talent')
                     
                     diff = 0
-                    color = None
                     if isinstance(old_talent_val, (int, float)) and isinstance(new_talent, (int, float)):
                         diff = new_talent - old_talent_val
                         if diff > 0:
                             status_str = f"Aumentou +{int(diff)}!"
-                            color = 'blue'
                         elif diff < 0:
                             status_str = f"Diminuiu -{abs(int(diff))}!"
-                            color = 'red'
                         else:
                             status_str = "Mesmo talento!"
                     else:
@@ -1070,7 +1278,7 @@ class DigimonMonitorApp:
                     'row_cells': row_cells,
                     'bare_name': bare_name,
                     'diff': diff,
-                    'color': color
+                    'new_talent': new_talent
                 })
 
             # Adiciona Digimons novos que surgiram nesta rodada
@@ -1093,31 +1301,96 @@ class DigimonMonitorApp:
                     'row_cells': new_row_cells,
                     'bare_name': bare_name,
                     'diff': 0,
-                    'color': None
+                    'new_talent': new_talent
                 })
 
-            # ORDENAÇÃO SEGURA NO PYTHON: Maior ganho primeiro, desempate em Ordem Alfabética
-            processed_rows.sort(key=lambda x: (-x['diff'], x['bare_name'].upper()))
+            # -------------------------------------------------------------
+            # ORDENAÇÃO SEGUNDO AS TRÊS PRIORIDADES:
+            # 1ª Prioridade: Digimons que aumentaram talento (maior ganho no topo)
+            # 2ª Prioridade: Menor talento após a comparação
+            # 3ª Prioridade: Ordem alfabética
+            # -------------------------------------------------------------
+            def sort_key(item):
+                d = item['diff']
+                t_val = item['new_talent'] if isinstance(item['new_talent'], (int, float)) else 999999999
+                name = item['bare_name'].upper()
+
+                if d > 0:
+                    return (0, -d, t_val, name)
+                else:
+                    return (1, 0, t_val, name)
+
+            processed_rows.sort(key=sort_key)
 
             # Monta a matriz final
             final_grid = [new_headers]
             for r in processed_rows:
                 final_grid.append(r['row_cells'])
 
-            # Reescreve a planilha de uma vez só
+            # Reescreve a planilha
             sheet.clear()
             sheet.range((1, 1)).value = final_grid
 
-            # Aplica a cor do texto exclusivamente na nova coluna de Comparação
-            comp_col_excel = len(new_headers) - 1 # Posição 1-based da penúltima coluna
-            
-            for row_i, r in enumerate(processed_rows, start=2):
-                if r['color'] == 'blue':
-                    sheet.range((row_i, comp_col_excel)).font.color = (30, 100, 255)
-                elif r['color'] == 'red':
-                    sheet.range((row_i, comp_col_excel)).font.color = (220, 30, 30)
+            # -------------------------------------------------------------
+            # PRESERVAÇÃO DE CORES EM TODAS AS COLUNAS DE COMPARAÇÃO
+            #
+            # OTIMIZAÇÃO DE PERFORMANCE: sheet.range(...).font.color = ... é
+            # 1 chamada COM (ida-e-volta pro processo do Excel) POR CÉLULA.
+            # Com várias colunas "Comparação" x centenas de Digimons, um
+            # loop célula-a-célula facilmente vira milhares de chamadas e
+            # trava o programa por vários segundos.
+            #
+            # Em vez disso, agrupamos linhas CONSECUTIVAS que precisam da
+            # MESMA cor em blocos, e aplicamos a cor com 1 única chamada
+            # por bloco (sheet.range((linha_ini,col),(linha_fim,col)).font.color).
+            # Isso reduz de "1 chamada por Digimon" pra "1 chamada por
+            # sequência contínua da mesma cor" - normalmente uma fração
+            # pequena do total.
+            # -------------------------------------------------------------
+            COLOR_BLUE = (30, 100, 255)
+            COLOR_RED = (220, 30, 30)
 
-            sheet.autofit()
+            for col_idx, h_name in enumerate(new_headers, start=1):
+                if not (h_name and str(h_name).strip().lower().startswith("comparação")):
+                    continue
+
+                # Monta a lista de cor por linha (None = sem cor / não mexe)
+                row_colors = []
+                for row_i in range(2, len(final_grid) + 1):
+                    cell_val = str(final_grid[row_i - 1][col_idx - 1] or "").lower()
+                    if "aumentou" in cell_val:
+                        row_colors.append((row_i, COLOR_BLUE))
+                    elif "diminuiu" in cell_val:
+                        row_colors.append((row_i, COLOR_RED))
+                    # "Mesmo talento!" ou vazio -> sem cor, não precisa de chamada nenhuma
+
+                if not row_colors:
+                    continue
+
+                # Agrupa linhas consecutivas com a MESMA cor em blocos
+                block_start_row, block_color = row_colors[0]
+                prev_row = block_start_row
+                for row_i, color in row_colors[1:]:
+                    if row_i == prev_row + 1 and color == block_color:
+                        prev_row = row_i
+                        continue
+                    # Fecha o bloco atual (1 chamada COM pro bloco inteiro)
+                    sheet.range((block_start_row, col_idx), (prev_row, col_idx)).font.color = block_color
+                    block_start_row, block_color = row_i, color
+                    prev_row = row_i
+                # Fecha o último bloco pendente
+                sheet.range((block_start_row, col_idx), (prev_row, col_idx)).font.color = block_color
+
+            # OTIMIZAÇÃO DE PERFORMANCE: sheet.autofit() sem escopo mede o
+            # texto de TODAS as colunas da aba (e esse conjunto só cresce a
+            # cada rodada). sheet.clear() NÃO reseta a largura de coluna já
+            # calculada em rodadas anteriores (largura é propriedade da
+            # coluna, não é apagada junto do conteúdo/formatação das
+            # células) - então só precisamos ajustar a largura das DUAS
+            # colunas novas desta rodada, não da aba inteira.
+            new_col_start = len(headers) + 1
+            new_col_end = len(new_headers)
+            sheet.range((1, new_col_start), (len(final_grid), new_col_end)).autofit()
 
             # Aplica AutoFiltro na tabela inteira
             try:
@@ -1130,17 +1403,56 @@ class DigimonMonitorApp:
         except Exception as e:
             return {'status': 'error', 'count': 0, 'new': 0, 'error': str(e)}
 
-    def on_sync_excel_click(self):
+    def setup_global_hotkey(self):
         """
-        Handler do botão "🔄 Sync Excel". Roda a sincronização sob demanda,
-        numa thread separada, pra chamada COM com o Excel (que pode demorar
-        um pouco, principalmente se a planilha tiver muitas linhas) não travar
-        a janela do programa. A UI só é tocada de volta na thread principal,
-        via self.root.after(...).
+        Registra o atalho global (HOTKEY_SYNC_TALENTOS) que dispara o mesmo
+        clique do botão azul "🔄 Sync Main Sheet", funcionando mesmo com a
+        janela do programa em segundo plano/minimizada.
+
+        Usa a lib "keyboard", que faz um hook de teclado em baixo nível do
+        Windows - por isso pega o toque independente de qual janela está
+        em foco. Como o callback dela roda numa thread própria (não a
+        thread principal do tkinter), a gente não chama on_sync_talentos_click
+        direto: agenda com self.root.after(0, ...) pra rodar com segurança
+        na thread da UI.
+        """
+        self._hotkey_registered = False
+
+        if not HOTKEY_SYNC_ENABLED:
+            return
+        if not KEYBOARD_AVAILABLE:
+            self.log(f" {I18N[self.lang]['msg_hotkey_no_lib']}", "alert")
+            return
+
+        try:
+            keyboard.add_hotkey(
+                HOTKEY_SYNC_TALENTOS,
+                lambda: self.root.after(0, self.on_sync_talentos_click)
+            )
+            self._hotkey_registered = True
+            self.log(f" {I18N[self.lang]['msg_hotkey_registered'].format(key=HOTKEY_SYNC_TALENTOS)}", "status")
+        except Exception as e:
+            self.log(f" {I18N[self.lang]['msg_hotkey_failed'].format(key=HOTKEY_SYNC_TALENTOS)}{e}", "alert")
+
+    def teardown_global_hotkey(self):
+        """Desregistra o atalho global ao fechar o programa, evitando o hook
+        de teclado ficar "preso" no sistema depois que a janela já fechou."""
+        if getattr(self, "_hotkey_registered", False) and KEYBOARD_AVAILABLE:
+            try:
+                keyboard.remove_hotkey(HOTKEY_SYNC_TALENTOS)
+            except Exception:
+                pass
+
+    def on_sync_talentos_click(self):
+        """
+        Handler do botão "🔄 Sync Main Sheet". Só sincroniza Talento/Level na
+        planilha principal - não mexe na aba de comparação. Roda numa thread
+        separada pra não travar a janela; a UI só é tocada de volta na
+        thread principal, via self.root.after(...).
         """
         t = I18N[self.lang]
 
-        if getattr(self, "_sync_excel_running", False):
+        if getattr(self, "_sync_talentos_running", False):
             return  # já tem uma sincronização rodando, ignora clique duplicado
 
         active_digimons = getattr(self, "active_digimons", None)
@@ -1148,44 +1460,22 @@ class DigimonMonitorApp:
             self.log(f" {t['msg_sync_excel_no_data']}", "alert")
             return
 
-        # Decide se vai popular a aba de comparação, respeitando as flags:
-        # - COMPARADOR_SYNC=False -> nunca roda a comparação (nem pergunta).
-        # - COMPARADOR_SYNC=True + ALERT_MSG_SYNC=True  -> pergunta antes (comportamento antigo).
-        # - COMPARADOR_SYNC=True + ALERT_MSG_SYNC=False -> roda direto, sem caixa de alerta.
-        if not COMPARADOR_SYNC:
-            populate_comparison = False
-        elif ALERT_MSG_SYNC:
-            # O messagebox precisa rodar na thread principal (é modal e mexe com o
-            # loop de eventos do tkinter), por isso perguntamos ANTES de disparar
-            # a thread de trabalho, não depois.
-            populate_comparison = messagebox.askyesno(
-                t["ask_sync_comparison_title"],
-                t["ask_sync_comparison_body"]
-            )
-        else:
-            populate_comparison = True
-
-        self._sync_excel_running = True
-        self.btn_sync_excel.config(state=tk.DISABLED, text=t["btn_sync_excel_running"])
-        if self._sync_status_after_id is not None:
-            try:
-                self.root.after_cancel(self._sync_status_after_id)
-            except Exception:
-                pass
-            self._sync_status_after_id = None
+        self._sync_talentos_running = True
+        self.btn_sync_talentos.config(state=tk.DISABLED, text=t["btn_sync_talentos_running"])
+        self._cancel_sync_status_timer()
         self.lbl_sync_status.config(text="")
 
         def worker():
-            result = self.sync_protected_talents_to_excel(active_digimons, populate_comparison=populate_comparison)
-            self.root.after(0, lambda: self._on_sync_excel_done(result))
+            result = self.sync_protected_talents_to_excel(active_digimons)
+            self.root.after(0, lambda: self._on_sync_talentos_done(result))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_sync_excel_done(self, result):
+    def _on_sync_talentos_done(self, result):
         """Roda na thread principal (chamado via root.after) pra atualizar a UI com segurança."""
         t = I18N[self.lang]
-        self._sync_excel_running = False
-        self.btn_sync_excel.config(state=tk.NORMAL, text=t["btn_sync_excel"])
+        self._sync_talentos_running = False
+        self.btn_sync_talentos.config(state=tk.NORMAL, text=t["btn_sync_talentos"])
 
         status = result.get('status')
         label_msg, label_color = None, FG_COLOR
@@ -1210,33 +1500,79 @@ class DigimonMonitorApp:
             self.log(f" ⚠️ [Excel Sync] Falha ao atualizar planilha: {result.get('error')}", "alert")
             label_msg, label_color = "⚠️ Erro ao sincronizar.", FG_ALERT
 
-        # Resultado da aba "Comparações_Talento" (só existe se o usuário
-        # respondeu "Sim" à pergunta de popular a aba de comparação).
-        comparison = result.get('comparison')
-        if comparison is not None:
-            comp_status = comparison.get('status')
-            if comp_status == 'created':
-                comp_msg = t['msg_comparison_created'].format(count=comparison.get('count', 0))
-                self.log(comp_msg, "status")
-                label_msg, label_color = comp_msg.strip(), FG_COLOR
-            elif comp_status == 'updated':
-                comp_msg = t['msg_comparison_updated'].format(
-                    count=comparison.get('count', 0), new=comparison.get('new', 0)
-                )
-                self.log(comp_msg, "status")
-                label_msg, label_color = comp_msg.strip(), FG_COLOR
-            elif comp_status == 'error':
-                comp_msg = f"{t['msg_comparison_error']}{comparison.get('error')}"
-                self.log(comp_msg, "alert")
-                label_msg, label_color = "⚠️ Erro na aba de comparação.", FG_ALERT
+        if label_msg:
+            self._show_sync_status_label(label_msg, label_color)
+
+    def on_sync_comparador_click(self):
+        """
+        Handler do botão "📊 Sync Comparator". Só roda a aba
+        "Comparações_Talento" - não mexe na planilha principal. Roda numa
+        thread separada e independente do sync de Talentos/Level (os dois
+        podem ser clicados sem um esperar o outro).
+        """
+        t = I18N[self.lang]
+
+        if getattr(self, "_sync_comparador_running", False):
+            return  # já tem uma sincronização rodando, ignora clique duplicado
+
+        active_digimons = getattr(self, "active_digimons", None)
+        if not active_digimons:
+            self.log(f" {t['msg_sync_excel_no_data']}", "alert")
+            return
+
+        self._sync_comparador_running = True
+        self.btn_sync_comparador.config(state=tk.DISABLED, text=t["btn_sync_comparador_running"])
+        self._cancel_sync_status_timer()
+        self.lbl_sync_status.config(text="")
+
+        def worker():
+            result = self.sync_comparador_to_excel(active_digimons)
+            self.root.after(0, lambda: self._on_sync_comparador_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_sync_comparador_done(self, result):
+        """Roda na thread principal (chamado via root.after) pra atualizar a UI com segurança."""
+        t = I18N[self.lang]
+        self._sync_comparador_running = False
+        self.btn_sync_comparador.config(state=tk.NORMAL, text=t["btn_sync_comparador"])
+
+        status = result.get('status')
+        label_msg, label_color = None, FG_COLOR
+
+        if status == 'created':
+            msg = t['msg_comparison_created'].format(count=result.get('count', 0))
+            self.log(msg, "status")
+            label_msg, label_color = msg.strip(), FG_COLOR
+        elif status == 'updated':
+            msg = t['msg_comparison_updated'].format(count=result.get('count', 0), new=result.get('new', 0))
+            self.log(msg, "status")
+            label_msg, label_color = msg.strip(), FG_COLOR
+        elif status == 'reset':
+            msg = t['msg_comparison_reset'].format(count=result.get('count', 0))
+            self.log(msg, "status")
+            label_msg, label_color = msg.strip(), FG_COLOR
+        elif status == 'no_protected':
+            msg = t['msg_sync_excel_none']
+            self.log(f" {msg}", "status")
+            label_msg, label_color = msg, FG_ALMOST
+        elif status == 'disabled':
+            msg = t['msg_comparador_disabled'] if not COMPARADOR_SYNC else t['msg_sync_excel_disabled']
+            self.log(f" {msg}", "alert")
+            label_msg, label_color = msg, FG_ALERT
+        elif status == 'no_lib':
+            msg = "⚠️ xlwings não instalado."
+            self.log(" ⚠️ xlwings não instalado - sync com Excel desativado.", "alert")
+            label_msg, label_color = msg, FG_ALERT
+        elif status == 'error':
+            comp_msg = f"{t['msg_comparison_error']}{result.get('error')}"
+            self.log(comp_msg, "alert")
+            label_msg, label_color = "⚠️ Erro na aba de comparação.", FG_ALERT
 
         if label_msg:
             self._show_sync_status_label(label_msg, label_color)
 
-    def _show_sync_status_label(self, message, color, duration_ms=3000):
-        """Mostra 'message' no label logo abaixo do botão de sync e agenda o sumiço
-        automático depois de 'duration_ms'. Cancela qualquer timer pendente anterior
-        pra evitar que um clique novo seja apagado por um timer de um clique antigo."""
+    def _cancel_sync_status_timer(self):
         if self._sync_status_after_id is not None:
             try:
                 self.root.after_cancel(self._sync_status_after_id)
@@ -1244,6 +1580,11 @@ class DigimonMonitorApp:
                 pass
             self._sync_status_after_id = None
 
+    def _show_sync_status_label(self, message, color, duration_ms=3000):
+        """Mostra 'message' no label logo abaixo dos botões de sync e agenda o sumiço
+        automático depois de 'duration_ms'. Cancela qualquer timer pendente anterior
+        pra evitar que um clique novo seja apagado por um timer de um clique antigo."""
+        self._cancel_sync_status_timer()
         self.lbl_sync_status.config(text=message, fg=color)
         self._sync_status_after_id = self.root.after(duration_ms, self._clear_sync_status_label)
 
@@ -1980,8 +2321,9 @@ class DigimonMonitorApp:
         # OBS: a sincronização com o Excel NÃO roda mais automaticamente aqui.
         # Ela ficava cara demais rodando a cada leitura de save (que acontece
         # com bastante frequência no modo automático). Agora é sob demanda,
-        # disparada pelo botão "🔄 Sync Excel" (self.btn_sync_excel), que
-        # chama self.sync_protected_talents_to_excel(self.active_digimons).
+        # via dois botões independentes: "🔄 Sync Main Sheet" (self.btn_sync_talentos
+        # -> self.sync_protected_talents_to_excel) e "📊 Sync Comparator"
+        # (self.btn_sync_comparador -> self.sync_comparador_to_excel).
 
         wishlist_resolved = []   # [(w_idx, item, dig_info), ...] -> ainda existem no save, ativos
         wishlist_orphaned = []   # [(w_idx, item), ...] -> órfãos (já marcados, ou detectados agora)
