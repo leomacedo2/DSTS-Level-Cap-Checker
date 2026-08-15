@@ -67,10 +67,8 @@ DIGIMON_SIZE = 336
 # ==========================================
 EXCEL_SYNC_ENABLED = False
 COMPARADOR_SYNC = False   # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
-ALERT_MSG_SYNC = False   # OBSOLETO: não é mais usado. Antes controlava a caixa de confirmação de um botão único que fazia
-                          # sync de Talentos + Comparador junto. Agora são dois botões separados (ver btn_sync_talentos /
-                          # btn_sync_comparador), então clicar no botão certo já é a confirmação. Mantido só pra não quebrar
-                          # nada que você referencie em outro lugar - pode remover se quiser.
+AUTO_SYNC_TALENTOS_VISIBLE = False  # Se False, esconde o auto-sync e impede qualquer sync automatico com Excel.
+AUTO_SYNC_TALENTOS_DEFAULT = False # Valor inicial quando ainda nao existe preferencia salva no config.json.
 
 # Caminho genérico de exemplo
 EXCEL_FILE_PATH = r"C:\caminho\para\sua\planilha.xlsm" 
@@ -117,7 +115,8 @@ MAX_COMPARACOES = 4          # Total de comparações na tabela de comparações
 #
 # Nomes aceitos pela lib keyboard: "f13", "f14", ..., "f24". Combinações
 # também funcionam, ex.: "ctrl+f13", "ctrl+shift+f13".
-HOTKEY_SYNC_ENABLED = False
+HOTKEY_SYNC_ENABLED = True
+HOTKEY_FOCUS_WISHLIST = "f19"  # <- foca direto na busca da Wishlist
 HOTKEY_SYNC_TALENTOS = "f18"   # <- troque aqui pra tecla que você quiser
 
 # CORES DARK MODE
@@ -156,6 +155,10 @@ I18N = {
         "btn_sync_talentos_running": "🔄 Syncing...",
         "btn_sync_comparador": "📊 Sync Comparator",
         "btn_sync_comparador_running": "📊 Syncing...",
+        "auto_sync_on": "Auto Sync ON",
+        "auto_sync_off": "Auto Sync OFF",
+        "msg_auto_sync_on": "✅ Auto-sync enabled. It will run after each new save.",
+        "msg_auto_sync_off": "ℹ️ Auto-sync disabled.",
         "msg_sync_excel_ok": "✅ Excel updated: ",
         "msg_sync_excel_none": "ℹ️ No protected Digimon matched in the spreadsheet.",
         "msg_sync_excel_disabled": "⚠️ Excel sync is disabled (EXCEL_SYNC_ENABLED = False).",
@@ -263,6 +266,10 @@ I18N = {
         "btn_sync_talentos_running": "🔄 Sincronizando...",
         "btn_sync_comparador": "📊 Sync Comparador",
         "btn_sync_comparador_running": "📊 Sincronizando...",
+        "auto_sync_on": "Auto Sync ON",
+        "auto_sync_off": "Auto Sync OFF",
+        "msg_auto_sync_on": "✅ Auto-sync ativado. Vai rodar a cada novo save.",
+        "msg_auto_sync_off": "ℹ️ Auto-sync desativado.",
         "msg_sync_excel_ok": "✅ Excel atualizado: ",
         "msg_sync_excel_none": "ℹ️ Nenhum Digimon protegido encontrado na planilha.",
         "msg_sync_excel_disabled": "⚠️ Sync com Excel está desativado (EXCEL_SYNC_ENABLED = False).",
@@ -379,6 +386,12 @@ class DigimonMonitorApp:
         self.is_paused = False
         self.last_mtime = 0
         self.blink_state = False
+        self.auto_sync_talentos_enabled = (
+            AUTO_SYNC_TALENTOS_VISIBLE
+            and self.config_data.get("auto_sync_talentos_enabled", AUTO_SYNC_TALENTOS_DEFAULT)
+        )
+        self.auto_sync_talentos_var = tk.StringVar(value="ON" if self.auto_sync_talentos_enabled else "OFF")
+        self._last_auto_sync_signature = None
         # ... dentro do __init__, junto das outras variáveis ...
         self.quase_sort_by = self.config_data.get("quase_sort_by", "XP") # XP ou ACC
 
@@ -449,6 +462,9 @@ class DigimonMonitorApp:
         self.config_data["quase_filter_protected"] = getattr(self, 'quase_filter_protected', False)
         self.config_data["quase_filter_wishlist"] = getattr(self, 'quase_filter_wishlist', False)
         self.config_data["list_order"] = self.get_normalized_list_order()
+        self.config_data["auto_sync_talentos_enabled"] = (
+            AUTO_SYNC_TALENTOS_VISIBLE and getattr(self, 'auto_sync_talentos_enabled', False)
+        )
         # ... dentro do save_config ...
         self.config_data["quase_sort_by"] = getattr(self, 'quase_sort_by', "XP")
         try:
@@ -523,6 +539,9 @@ class DigimonMonitorApp:
             self.btn_sync_talentos.config(text=t["btn_sync_talentos"])
         if not getattr(self, "_sync_comparador_running", False):
             self.btn_sync_comparador.config(text=t["btn_sync_comparador"])
+        if hasattr(self, "rb_auto_sync_on"):
+            self.rb_auto_sync_on.config(text=t["auto_sync_on"])
+            self.rb_auto_sync_off.config(text=t["auto_sync_off"])
         self.lbl_inspect.config(text=t["lbl_inspect"])
         self.lbl_paused.config(text=t["lbl_paused"])
         self.btn_resume.config(text=t["btn_resume"])
@@ -627,6 +646,19 @@ class DigimonMonitorApp:
             sync_buttons_frame, text=I18N[self.lang]["btn_sync_comparador"], command=self.on_sync_comparador_click,
             bg="#8A2BE2", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT
         )
+        auto_sync_frame = tk.Frame(control_frame, bg=PANEL_BG)
+        self.rb_auto_sync_on = tk.Radiobutton(
+            auto_sync_frame, text=I18N[self.lang]["auto_sync_on"], variable=self.auto_sync_talentos_var,
+            value="ON", command=self.on_auto_sync_talentos_change, bg=PANEL_BG, fg="white",
+            selectcolor=BTN_BG, activebackground=PANEL_BG, activeforeground="white",
+            font=("Consolas", 9), cursor="hand2"
+        )
+        self.rb_auto_sync_off = tk.Radiobutton(
+            auto_sync_frame, text=I18N[self.lang]["auto_sync_off"], variable=self.auto_sync_talentos_var,
+            value="OFF", command=self.on_auto_sync_talentos_change, bg=PANEL_BG, fg="white",
+            selectcolor=BTN_BG, activebackground=PANEL_BG, activeforeground="white",
+            font=("Consolas", 9), cursor="hand2"
+        )
 
         self.lbl_sync_status = tk.Label(control_frame, text="", bg=PANEL_BG, fg=FG_COLOR,
                                          font=("Consolas", 9, "bold"))
@@ -638,6 +670,10 @@ class DigimonMonitorApp:
             self.btn_sync_talentos.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 3))
             if COMPARADOR_SYNC:
                 self.btn_sync_comparador.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(3, 0))
+            if AUTO_SYNC_TALENTOS_VISIBLE:
+                auto_sync_frame.pack(pady=(0, 2), padx=15, fill=tk.X)
+                self.rb_auto_sync_on.pack(side=tk.LEFT, expand=True)
+                self.rb_auto_sync_off.pack(side=tk.LEFT, expand=True)
             self.lbl_sync_status.pack(pady=(0, 5), padx=15, fill=tk.X)
         # ==========================================
 
@@ -1403,6 +1439,20 @@ class DigimonMonitorApp:
         except Exception as e:
             return {'status': 'error', 'count': 0, 'new': 0, 'error': str(e)}
 
+    def focus_wishlist_search(self):
+        if not hasattr(self, "entry_wish_id"):
+            return
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.after(150, lambda: self.root.attributes("-topmost", False))
+            self.root.focus_force()
+            self.entry_wish_id.focus_set()
+            self.entry_wish_id.icursor(tk.END)
+        except Exception:
+            pass
+
     def setup_global_hotkey(self):
         """
         Registra o atalho global (HOTKEY_SYNC_TALENTOS) que dispara o mesmo
@@ -1417,6 +1467,7 @@ class DigimonMonitorApp:
         na thread da UI.
         """
         self._hotkey_registered = False
+        self._registered_hotkeys = []
 
         if not HOTKEY_SYNC_ENABLED:
             return
@@ -1429,21 +1480,36 @@ class DigimonMonitorApp:
                 HOTKEY_SYNC_TALENTOS,
                 lambda: self.root.after(0, self.on_sync_talentos_click)
             )
+            self._registered_hotkeys.append(HOTKEY_SYNC_TALENTOS)
+            keyboard.add_hotkey(
+                HOTKEY_FOCUS_WISHLIST,
+                lambda: self.root.after(0, self.focus_wishlist_search)
+            )
+            self._registered_hotkeys.append(HOTKEY_FOCUS_WISHLIST)
             self._hotkey_registered = True
             self.log(f" {I18N[self.lang]['msg_hotkey_registered'].format(key=HOTKEY_SYNC_TALENTOS)}", "status")
+            self.log(f" {I18N[self.lang]['msg_hotkey_registered'].format(key=HOTKEY_FOCUS_WISHLIST)}", "status")
         except Exception as e:
-            self.log(f" {I18N[self.lang]['msg_hotkey_failed'].format(key=HOTKEY_SYNC_TALENTOS)}{e}", "alert")
+            for hotkey in getattr(self, "_registered_hotkeys", []):
+                try:
+                    keyboard.remove_hotkey(hotkey)
+                except Exception:
+                    pass
+            self._registered_hotkeys = []
+            self._hotkey_registered = False
+            self.log(f" {I18N[self.lang]['msg_hotkey_failed'].format(key=f'{HOTKEY_SYNC_TALENTOS}/{HOTKEY_FOCUS_WISHLIST}')}{e}", "alert")
 
     def teardown_global_hotkey(self):
         """Desregistra o atalho global ao fechar o programa, evitando o hook
         de teclado ficar "preso" no sistema depois que a janela já fechou."""
         if getattr(self, "_hotkey_registered", False) and KEYBOARD_AVAILABLE:
-            try:
-                keyboard.remove_hotkey(HOTKEY_SYNC_TALENTOS)
-            except Exception:
-                pass
+            for hotkey in getattr(self, "_registered_hotkeys", [HOTKEY_SYNC_TALENTOS]):
+                try:
+                    keyboard.remove_hotkey(hotkey)
+                except Exception:
+                    pass
 
-    def on_sync_talentos_click(self):
+    def _legacy_on_sync_talentos_click(self):
         """
         Handler do botão "🔄 Sync Main Sheet". Só sincroniza Talento/Level na
         planilha principal - não mexe na aba de comparação. Roda numa thread
@@ -1470,6 +1536,60 @@ class DigimonMonitorApp:
             self.root.after(0, lambda: self._on_sync_talentos_done(result))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def on_auto_sync_talentos_change(self):
+        self.auto_sync_talentos_enabled = (
+            AUTO_SYNC_TALENTOS_VISIBLE and self.auto_sync_talentos_var.get() == "ON"
+        )
+        self.save_config()
+        t = I18N[self.lang]
+        msg = t["msg_auto_sync_on"] if self.auto_sync_talentos_enabled else t["msg_auto_sync_off"]
+        self._show_sync_status_label(msg, FG_COLOR if self.auto_sync_talentos_enabled else FG_ALMOST)
+
+    def should_auto_sync_talentos(self):
+        return (
+            EXCEL_SYNC_ENABLED
+            and AUTO_SYNC_TALENTOS_VISIBLE
+            and getattr(self, "auto_sync_talentos_enabled", False)
+        )
+
+    def start_sync_talentos(self, active_digimons=None, silent_no_data=False):
+        t = I18N[self.lang]
+
+        if getattr(self, "_sync_talentos_running", False):
+            return False
+
+        if active_digimons is None:
+            active_digimons = getattr(self, "active_digimons", None)
+        if not active_digimons:
+            if not silent_no_data:
+                self.log(f" {t['msg_sync_excel_no_data']}", "alert")
+            return False
+
+        active_snapshot = {key: dict(value) for key, value in active_digimons.items()}
+        self._sync_talentos_running = True
+        self.btn_sync_talentos.config(state=tk.DISABLED, text=t["btn_sync_talentos_running"])
+        self._cancel_sync_status_timer()
+        self.lbl_sync_status.config(text="")
+
+        def worker():
+            result = self.sync_protected_talents_to_excel(active_snapshot)
+            self.root.after(0, lambda: self._on_sync_talentos_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    def maybe_auto_sync_talentos(self, filename, save_mtime):
+        if not self.should_auto_sync_talentos():
+            return
+        signature = (filename, save_mtime)
+        if signature == self._last_auto_sync_signature:
+            return
+        if self.start_sync_talentos(silent_no_data=True):
+            self._last_auto_sync_signature = signature
+
+    def on_sync_talentos_click(self):
+        self.start_sync_talentos()
 
     def _on_sync_talentos_done(self, result):
         """Roda na thread principal (chamado via root.after) pra atualizar a UI com segurança."""
@@ -2141,6 +2261,7 @@ class DigimonMonitorApp:
     def process_save(self, filepath, filename):
         self._current_filepath = filepath
         self._current_filename = filename
+        self.active_digimons = {}
         OPENSSL_PATH = os.path.join(SCRIPT_DIR, "openssl.exe")
         self.text_area.config(state=tk.NORMAL)
         self.text_area.delete(1.0, tk.END)
@@ -2769,7 +2890,9 @@ class DigimonMonitorApp:
                     acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
                     
                     # NOVA FORMATAÇÃO: XP com 10 espaços e separador |
-                    msg = f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {target_lvl:02d}) [{bar_str}] {faltam_str:>10} EXP  |  {acc_formatted} "
+                    raw_name = name
+                    name_str = raw_name if len(raw_name) <= MAX_NAME_LEN else raw_name[:MAX_NAME_LEN - 3] + "..."
+                    msg = f"{lock_icon} {name_str:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {target_lvl:02d}) [{bar_str}] {faltam_str:>10} EXP  |  {acc_formatted} "
                     self.text_area.insert(tk.END, msg, "status")
 
                     btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
@@ -2866,6 +2989,7 @@ class DigimonMonitorApp:
                     self.last_mtime = current_mtime
                     filename_only = os.path.basename(latest_file)
                     self.process_save(latest_file, filename_only)
+                    self.maybe_auto_sync_talentos(filename_only, current_mtime)
             except Exception:
                 pass 
         self.root.after(2000, self.update_loop)
