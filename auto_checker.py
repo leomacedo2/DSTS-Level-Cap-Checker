@@ -67,7 +67,7 @@ DIGIMON_SIZE = 336
 # ==========================================
 EXCEL_SYNC_ENABLED = False
 COMPARADOR_SYNC = False   # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
-AUTO_SYNC_TALENTOS_VISIBLE = False  # Se False, esconde o auto-sync e impede qualquer sync automatico com Excel.
+AUTO_SYNC_TALENTOS_VISIBLE = False # Se False, esconde o auto-sync e impede qualquer sync automatico com Excel.
 AUTO_SYNC_TALENTOS_DEFAULT = False # Valor inicial quando ainda nao existe preferencia salva no config.json.
 
 # Caminho genérico de exemplo
@@ -1134,7 +1134,7 @@ class DigimonMonitorApp:
                 sheet_obj.clear()
                 rows = []
                 for dig in protegidos:
-                    local = dig.get('loc', '?')
+                    local = self._loc_display(dig.get('loc', '?'), dig.get('slot'), translate=False)
                     name = str(dig.get('name', '')).strip()
                     talent = dig.get('ascendant_talent')
                     rows.append({
@@ -1225,7 +1225,7 @@ class DigimonMonitorApp:
                         # o local atual dele).
                         dig_atual = protegido_by_name.get(bare_name.upper())
                         if dig_atual is not None:
-                            novo_local = dig_atual.get('loc', '?')
+                            novo_local = self._loc_display(dig_atual.get('loc', '?'), dig_atual.get('slot'), translate=False)
                             label_atualizado = f"[ {novo_local} ] {bare_name}"
                         else:
                             label_atualizado = str(raw_label).strip()
@@ -1289,7 +1289,7 @@ class DigimonMonitorApp:
                     diff = -999999
                 else:
                     matched_names.add(key)
-                    local = dig.get('loc', '?')
+                    local = self._loc_display(dig.get('loc', '?'), dig.get('slot'), translate=False)
                     new_talent = dig.get('ascendant_talent')
                     
                     diff = 0
@@ -1320,7 +1320,7 @@ class DigimonMonitorApp:
             # Adiciona Digimons novos que surgiram nesta rodada
             novos = [d for d in protegidos if str(d.get('name', '')).strip().upper() not in matched_names]
             for dig in novos:
-                local = dig.get('loc', '?')
+                local = self._loc_display(dig.get('loc', '?'), dig.get('slot'), translate=False)
                 bare_name = str(dig.get('name', '')).strip()
                 new_talent = dig.get('ascendant_talent')
 
@@ -1736,7 +1736,6 @@ class DigimonMonitorApp:
         """Filtra self.active_digimons pelo texto digitado (ID exato ou substring do nome).
         Retorna (results_map, combo_options) — puro, sem tocar em nenhum widget."""
         t = I18N[self.lang]
-        loc_lbl = t["loc_labels"]
         active = getattr(self, 'active_digimons', None) or {}
 
         is_id_search = query_text.isdigit()
@@ -1766,7 +1765,7 @@ class DigimonMonitorApp:
         for info in results_map:
             exp_str = self.get_level_exp_display(info['id'], info['level'], info['exp'])
             lock_icon = "🔒 " if info.get('protected') else ""
-            combo_options.append(f"{lock_icon}{info['name']} [{loc_lbl[info['loc']]}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
+            combo_options.append(f"{lock_icon}{info['name']} [{self._loc_display(info['loc'], info.get('slot'))}] - {t['lvl_abbr']}{info['level']}/{info['talent']} | EXP {exp_str} | Ref {info['uid']}")
 
         return results_map, combo_options
 
@@ -2242,7 +2241,28 @@ class DigimonMonitorApp:
                     
         return latest_file, max_mtime
         
-    def calculate_almost_data(self, data, name_offset, name, level, talent, loc, protected, uid, is_almost):
+    def _loc_display(self, loc, slot=None, translate=True):
+        """
+        Retorna o texto usado dentro dos colchetes de localização (ex.: "[ PARTY 3 ]").
+
+        - PARTY: inclui a posição do Digimon na equipe (1-6) -> "PARTY 1".."PARTY 6".
+          Isso sempre dá 7 caracteres ("PARTY " + 1 dígito), o MESMO tamanho de
+          "FAZENDA" - então o alinhamento das listas (que usa :^7) continua
+          idêntico, sem precisar mudar nenhum width.
+        - BOX / FAZENDA: comportamento igual a antes. translate=True usa a
+          tradução (loc_labels) pro texto em tela; translate=False devolve o
+          valor cru ("BOX"/"FAZENDA"), usado na aba do Excel (que não deve
+          variar com o idioma da interface).
+        - slot é 0-based (mesmo índice salvo em active_digimons/'slot'),
+          por isso o +1 pra virar "PARTY 1" em vez de "PARTY 0".
+        """
+        if loc == "PARTY" and slot is not None:
+            return f"PARTY {slot + 1}"
+        if translate:
+            return I18N[self.lang]["loc_labels"].get(loc, loc)
+        return loc
+
+    def calculate_almost_data(self, data, name_offset, name, level, talent, loc, protected, uid, is_almost, slot=None):
         digimon_id = struct.unpack_from("<I", data, name_offset - 0x04)[0]
         current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
         ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
@@ -2256,7 +2276,7 @@ class DigimonMonitorApp:
         bar_str = self.build_progress_bar(faltam, progresso_total)
         faltam_str = f"{faltam:,}".replace(",", ".")
         
-        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected, uid, is_almost, ascendant_talent_raw)
+        return (name, level, talent, faltam, bar_str, faltam_str, loc, protected, uid, is_almost, ascendant_talent_raw, slot)
 
     def process_save(self, filepath, filename):
         self._current_filepath = filepath
@@ -2350,17 +2370,17 @@ class DigimonMonitorApp:
                     if talent > 99: talent = 99 
                     
                     if level == 99:
-                        lv99_list["FAZENDA"].append((name, level, talent, protected, ascendant_talent_raw))
+                        lv99_list["FAZENDA"].append((name, level, talent, protected, ascendant_talent_raw, i))
                         total_lv99 += 1
                     elif level >= talent: 
-                        alerts["FAZENDA"].append((name, level, talent, protected, ascendant_talent_raw))
+                        alerts["FAZENDA"].append((name, level, talent, protected, ascendant_talent_raw, i))
                         total_alerts += 1
                     elif level == talent - 1:
-                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, True)
+                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, True, i)
                         almost_list.append(almost_data)
                         total_almost += 1
                     elif level < talent - 1:
-                        remaining_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, False)
+                        remaining_data = self.calculate_almost_data(data, name_offset, name, level, talent, "FAZENDA", protected, uid, False, i)
                         if remaining_data[3] > 0:
                             remaining_list.append(remaining_data)
 
@@ -2410,17 +2430,17 @@ class DigimonMonitorApp:
                     if talent > 99: talent = 99 
                     
                     if level == 99:
-                        lv99_list[loc].append((name, level, talent, protected, ascendant_talent_raw))
+                        lv99_list[loc].append((name, level, talent, protected, ascendant_talent_raw, i))
                         total_lv99 += 1
                     elif level >= talent: 
-                        alerts[loc].append((name, level, talent, protected, ascendant_talent_raw))
+                        alerts[loc].append((name, level, talent, protected, ascendant_talent_raw, i))
                         total_alerts += 1
                     elif level == talent - 1:
-                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, True)
+                        almost_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, True, i)
                         almost_list.append(almost_data)
                         total_almost += 1
                     elif level < talent - 1:
-                        remaining_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, False)
+                        remaining_data = self.calculate_almost_data(data, name_offset, name, level, talent, loc, protected, uid, False, i)
                         if remaining_data[3] > 0:
                             remaining_list.append(remaining_data)
 
@@ -2509,6 +2529,7 @@ class DigimonMonitorApp:
             w_loc = dig_info['loc']
             w_name = dig_info['name']
             w_protected = dig_info.get('protected', False)
+            w_slot = dig_info.get('slot')
 
             # Dentro do loop de wishlist_resolved:
             exp_target = get_exp_needed(dig_id, target_lvl)
@@ -2517,12 +2538,12 @@ class DigimonMonitorApp:
             asc_talent = dig_info['ascendant_talent']
 
             if faltam <= 0 or cur_lvl >= target_lvl:
-                wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc, w_protected, asc_talent))
+                wishlist_reached.append((w_idx, w_name, cur_lvl, target_lvl, w_loc, w_protected, asc_talent, w_slot))
             else:
                 prog_total = exp_target - exp_base
                 bar_str = self.build_progress_bar(faltam, prog_total)
                 faltam_str = f"{faltam:,}".replace(",", ".")
-                wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc, w_protected, asc_talent))
+                wishlist_pending.append((faltam, w_idx, w_name, cur_lvl, target_lvl, bar_str, faltam_str, w_loc, w_protected, asc_talent, w_slot))
 
         # Os que bateram a meta contam no resumo junto com os alertas normais
         total_alerts += len(wishlist_reached)
@@ -2568,15 +2589,15 @@ class DigimonMonitorApp:
         reached_rows = []
         for loc in ["PARTY", "BOX", "FAZENDA"]:
             alerts[loc].sort(key=lambda x: (x[0], x[1]))
-            # 1. ADICIONADO: asc_talent no desempacotamento
-            for name, level, talent, protected, asc_talent in alerts[loc]:
-                reached_rows.append(("alert", loc, name, level, talent, protected, asc_talent))
+            # 1. ADICIONADO: asc_talent + slot no desempacotamento
+            for name, level, talent, protected, asc_talent, slot in alerts[loc]:
+                reached_rows.append(("alert", loc, name, level, talent, protected, asc_talent, slot))
 
-            # 2. ADICIONADO: asc_talent no desempacotamento da wishlist
-            for w_idx, w_name, w_level, w_target, w_item_loc, w_protected, asc_talent in wishlist_reached:
+            # 2. ADICIONADO: asc_talent + slot no desempacotamento da wishlist
+            for w_idx, w_name, w_level, w_target, w_item_loc, w_protected, asc_talent, w_slot in wishlist_reached:
                 if w_item_loc != loc:
                     continue
-                reached_rows.append(("wishlist", loc, w_idx, w_name, w_level, w_target, w_protected, asc_talent))
+                reached_rows.append(("wishlist", loc, w_idx, w_name, w_level, w_target, w_protected, asc_talent, w_slot))
 
         self.update_summary_panel(count_party, count_box, count_farm, total_alerts, total_almost, total_lv99, total_protected, t, loc_lbl)
 
@@ -2756,8 +2777,8 @@ class DigimonMonitorApp:
 
                 combined_entries = []
                 for item in almost_list + remaining_list:
-                    # 4. ADICIONADO: asc_talent no desempacotamento e no dicionário
-                    name, level, talent, faltam_int, bar_str, faltam_str, loc, protected, uid, is_almost, asc_talent = item
+                    # 4. ADICIONADO: asc_talent + slot no desempacotamento e no dicionário
+                    name, level, talent, faltam_int, bar_str, faltam_str, loc, protected, uid, is_almost, asc_talent, slot = item
                     combined_entries.append({
                         "name": name,
                         "level": level,
@@ -2766,6 +2787,7 @@ class DigimonMonitorApp:
                         "bar_str": bar_str,
                         "remaining_str": faltam_str,
                         "loc": loc,
+                        "slot": slot,
                         "protected": protected,
                         "uid_sort": int(uid, 16) if uid else 0,
                         "is_almost": is_almost,
@@ -2774,8 +2796,8 @@ class DigimonMonitorApp:
                         "asc_talent": asc_talent # <-- Adicionado
                     })
 
-                # 5. ADICIONADO: asc_talent no desempacotamento e no dicionário (Wishlist)
-                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected, asc_talent in wishlist_pending:
+                # 5. ADICIONADO: asc_talent + slot no desempacotamento e no dicionário (Wishlist)
+                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected, asc_talent, slot in wishlist_pending:
                     combined_entries.append({
                         "name": name,
                         "level": level,
@@ -2784,6 +2806,7 @@ class DigimonMonitorApp:
                         "bar_str": bar_str,
                         "remaining_str": faltam_str,
                         "loc": loc,
+                        "slot": slot,
                         "protected": protected,
                         "uid_sort": w_idx,
                         "is_almost": False,
@@ -2820,7 +2843,7 @@ class DigimonMonitorApp:
                         cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[entry["loc"]]
                         lock_icon = "🔒" if entry["protected"] else "  "
                         goal_label = t["target_abbr"] if entry["is_wishlist"] else t["limite_abbr"]
-                        self.text_area.insert(tk.END, f" [{loc_lbl[entry['loc']]:^7}] ", cor_tag)
+                        self.text_area.insert(tk.END, f" [{self._loc_display(entry['loc'], entry.get('slot')):^7}] ", cor_tag)
                         
                         
                         # --- TRUNCAMENTO INTELIGENTE ---
@@ -2856,8 +2879,8 @@ class DigimonMonitorApp:
             if getattr(self, 'show_lv99', False):
                 for loc in ["PARTY", "BOX", "FAZENDA"]:
                     lv99_list[loc].sort(key=lambda x: (x[0], x[1]))
-                    # 8. ADICIONADO: asc_talent no desempacotamento e string
-                    for name, level, talent, protected, asc_talent in lv99_list[loc]:
+                    # 8. ADICIONADO: asc_talent + slot no desempacotamento e string
+                    for name, level, talent, protected, asc_talent, slot in lv99_list[loc]:
                         cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                         lock_icon = "🔒" if protected else "  "
                         
@@ -2865,7 +2888,7 @@ class DigimonMonitorApp:
                         acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
                         
                         self.log([
-                            (f" [{loc_lbl[loc]:^7}] ", cor_tag),
+                            (f" [{self._loc_display(loc, slot):^7}] ", cor_tag),
                             (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {talent:02d}) {acc_formatted}", "status")
                         ])
 
@@ -2878,13 +2901,13 @@ class DigimonMonitorApp:
             render_header_with_controls(wishlist_title_text, "header_orange", 'show_wishlist', 'btn_show_wishlist', 'wishlist', is_first, is_last)
 
             if getattr(self, 'show_wishlist', False):
-                # 9. ADICIONADO: asc_talent no desempacotamento e string
-                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected, asc_talent in wishlist_pending:
+                # 9. ADICIONADO: asc_talent + slot no desempacotamento e string
+                for faltam_int, w_idx, name, level, target_lvl, bar_str, faltam_str, loc, protected, asc_talent, slot in wishlist_pending:
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                     lock_icon = "🔒" if protected else "  "
 
                     self.text_area.config(state=tk.NORMAL)
-                    self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
+                    self.text_area.insert(tk.END, f" [{self._loc_display(loc, slot):^7}] ", cor_tag)
 
                     # NOVA FORMATAÇÃO: T.A simplificado
                     acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
@@ -2911,10 +2934,10 @@ class DigimonMonitorApp:
             self.text_area.insert(tk.END, "\n\n")
             self.text_area.config(state=tk.DISABLED)
             
-            # 10. ADICIONADO: asc_talent no desempacotamento de entry_data e nas strings
+            # 10. ADICIONADO: asc_talent + slot no desempacotamento de entry_data e nas strings
             for entry_type, loc, *entry_data in reached_rows:
                 if entry_type == "alert":
-                    name, level, talent, protected, asc_talent = entry_data
+                    name, level, talent, protected, asc_talent, slot = entry_data
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                     lock_icon = "🔒" if protected else "  "
                     
@@ -2922,11 +2945,11 @@ class DigimonMonitorApp:
                     acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
                     
                     self.log([
-                        (f" [{loc_lbl[loc]:^7}] ", cor_tag),
+                        (f" [{self._loc_display(loc, slot):^7}] ", cor_tag),
                         (f"{lock_icon} {name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {level:02d} / {talent:02d}) {acc_formatted} {txt_atingiu}", "alert")
                     ])
                 else:
-                    w_idx, w_name, w_level, w_target, w_protected, asc_talent = entry_data
+                    w_idx, w_name, w_level, w_target, w_protected, asc_talent, slot = entry_data
                     cor_tag = {"PARTY": "loc_party", "BOX": "loc_box", "FAZENDA": "loc_fazenda"}[loc]
                     w_lock_icon = "🔒" if w_protected else "  "
                     
@@ -2934,7 +2957,7 @@ class DigimonMonitorApp:
                     w_acc_formatted = f"{{{int(asc_talent):,} T.A}}".replace(',', '.')
                     
                     self.text_area.config(state=tk.NORMAL)
-                    self.text_area.insert(tk.END, f" [{loc_lbl[loc]:^7}] ", cor_tag)
+                    self.text_area.insert(tk.END, f" [{self._loc_display(loc, slot):^7}] ", cor_tag)
                     self.text_area.insert(tk.END, f"{w_lock_icon} {w_name:<{MAX_NAME_LEN}} ({t['lvl_abbr']} {w_level:02d} / {w_target:02d}) {w_acc_formatted} {txt_atingiu} ", "status")
                     btn_del = tk.Button(self.text_area, text=" ❌ ", command=lambda idx=w_idx: self.delete_wishlist_item(idx),
                                         bg="#444444", fg="red", font=("Consolas", 8, "bold"),
