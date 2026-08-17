@@ -66,9 +66,10 @@ DIGIMON_SIZE = 336
 # INTEGRAÇÃO COM EXCEL (xlwings)
 # ==========================================
 EXCEL_SYNC_ENABLED = False
-COMPARADOR_SYNC = False   # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
-AUTO_SYNC_TALENTOS_VISIBLE = False # Se False, esconde o auto-sync e impede qualquer sync automatico com Excel.
+COMPARADOR_SYNC = False  # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
+AUTO_SYNC_TALENTOS_VISIBLE = False  # Se False, esconde o auto-sync e impede qualquer sync automatico com Excel.
 AUTO_SYNC_TALENTOS_DEFAULT = False # Valor inicial quando ainda nao existe preferencia salva no config.json.
+
 
 # Caminho genérico de exemplo
 EXCEL_FILE_PATH = r"C:\caminho\para\sua\planilha.xlsm" 
@@ -92,6 +93,7 @@ EXCEL_SHEET_NAME = "Digimons"  # Nome FIXO da aba principal (Coluna F/V/W). Ajus
 EXCEL_COL_NAME = 6           # Coluna F (nome do Digimon)
 EXCEL_COL_ASCENDANT = 22     # Coluna V (ascendant_talent_raw)
 EXCEL_COL_LEVEL = 23         # Coluna W (level) 
+EXCEL_COL_ELO = 24           # Coluna X (EloS)
 EXCEL_HEADER_ROW = 1         # Primeira linha considerada dado (pule se tiver cabeçalho maior)
 
 # Aba auxiliar que guarda o histórico de talento ascendente ao longo do tempo,
@@ -385,6 +387,7 @@ class DigimonMonitorApp:
         self.mode = tk.StringVar(value="AUTO")
         self.is_paused = False
         self.last_mtime = 0
+        self._pending_save_check = None  # (filepath, mtime, size) aguardando confirmação de "arquivo parou de mudar"
         self.blink_state = False
         self.auto_sync_talentos_enabled = (
             AUTO_SYNC_TALENTOS_VISIBLE
@@ -516,7 +519,8 @@ class DigimonMonitorApp:
         if nova_pasta:
             self.save_dir = os.path.normpath(nova_pasta)
             self.save_config()
-            self.last_mtime = 0 
+            self.last_mtime = 0
+            self._pending_save_check = None
             self.update_combo_list()
             self.log(f"{t['msg_folder_changed']}\n{self.save_dir}", "header")
             self.root.focus_set()
@@ -2197,7 +2201,8 @@ class DigimonMonitorApp:
         self.is_paused = False
         self.lbl_paused.pack_forget()
         self.btn_resume.pack_forget()
-        self.last_mtime = 0 
+        self.last_mtime = 0
+        self._pending_save_check = None
         self.update_combo_list()
         self.root.focus_set()
 
@@ -2217,7 +2222,8 @@ class DigimonMonitorApp:
         self.is_paused = False
         self.lbl_paused.pack_forget()
         self.btn_resume.pack_forget()
-        self.last_mtime = 0 
+        self.last_mtime = 0
+        self._pending_save_check = None
         self.btn_resume.config(bg="#8B0000") 
         self.save_combo.selection_clear()
         self.root.focus_set()
@@ -3009,10 +3015,47 @@ class DigimonMonitorApp:
             try:
                 latest_file, current_mtime = self.get_target_save()
                 if latest_file and current_mtime != self.last_mtime:
-                    self.last_mtime = current_mtime
-                    filename_only = os.path.basename(latest_file)
-                    self.process_save(latest_file, filename_only)
-                    self.maybe_auto_sync_talentos(filename_only, current_mtime)
+                    # DEBOUNCE / "ESTABILIZAÇÃO" DO ARQUIVO
+                    #
+                    # Antes, o mtime mudar já disparava process_save() (e, com o
+                    # auto-sync ligado, também o sync com o Excel) NO MESMO
+                    # instante. Se o jogo ainda estivesse no meio da escrita do
+                    # save (arquivo aberto, conteúdo parcial), a gente podia:
+                    #   1) ler um save truncado/corrompido (openssl decodifica
+                    #      lixo, sem erro nenhum - garbage in, garbage out), e/ou
+                    #   2) competir por acesso ao MESMO arquivo (nosso openssl.exe
+                    #      + o processo do jogo escrevendo), o que em alguns jogos
+                    #      pode causar erro de I/O na hora de salvar.
+                    #
+                    # Isso é ainda mais arriscado com o auto-sync ligado, porque
+                    # ele soma trabalho extra (chamadas COM pro Excel) bem na
+                    # janela em que o jogo pode estar salvando.
+                    #
+                    # A correção: só processamos o arquivo depois de ver o MESMO
+                    # (mtime, tamanho) em duas checagens seguidas (~2s de
+                    # intervalo, o próprio ciclo do update_loop) - ou seja, só
+                    # depois que ele parou de mudar. Isso não deixa a detecção
+                    # mais lenta em uso normal (o jogo grava rápido e para), só
+                    # evita agir enquanto o arquivo ainda está sendo escrito.
+                    try:
+                        current_size = os.path.getsize(latest_file)
+                    except OSError:
+                        current_size = None
+
+                    candidate = (latest_file, current_mtime, current_size)
+
+                    if self._pending_save_check == candidate:
+                        # Mesmo arquivo, mesmo mtime, mesmo tamanho do ciclo
+                        # anterior -> parou de mudar, seguro processar agora.
+                        self._pending_save_check = None
+                        self.last_mtime = current_mtime
+                        filename_only = os.path.basename(latest_file)
+                        self.process_save(latest_file, filename_only)
+                        self.maybe_auto_sync_talentos(filename_only, current_mtime)
+                    else:
+                        # 1ª vez vendo essa mudança (ou o arquivo ainda está
+                        # mudando) - só guarda e confirma no próximo ciclo.
+                        self._pending_save_check = candidate
             except Exception:
                 pass 
         self.root.after(2000, self.update_loop)
