@@ -988,7 +988,8 @@ class DigimonMonitorApp:
                     if row:
                         row_updates[row] = [
                             dig.get('ascendant_talent'),
-                            dig.get('level')
+                            dig.get('level'),
+                            dig.get('elo')
                         ]
 
                 if not row_updates:
@@ -1010,7 +1011,7 @@ class DigimonMonitorApp:
                     # espalhadas as linhas estejam.
                     block_range = sheet.range(
                         (first_row, EXCEL_COL_ASCENDANT),
-                        (last_row_update, EXCEL_COL_LEVEL)
+                        (last_row_update, EXCEL_COL_ELO)
                     )
                     current_block = block_range.value
                     if not isinstance(current_block, list):
@@ -2273,6 +2274,7 @@ class DigimonMonitorApp:
         current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
         ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
         
+        
         exp_alvo = get_exp_needed(digimon_id, talent)
         exp_base = get_exp_needed(digimon_id, level)
         
@@ -2364,11 +2366,23 @@ class DigimonMonitorApp:
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                 ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
+                elo_raw = struct.unpack_from("<f", data, name_offset + 0x13C)[0]
+                elo = int(elo_raw / 100)
                 protected = self.read_digimon_protected(data, name_offset)
                 talent_for_dict = min(talent_raw // 1000, 99) if talent_raw >= 1000 else 1
 
                 active_digimons[("FAZENDA", i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': "FAZENDA", 'slot': i, 'protected': protected, 'talent': talent_for_dict, 'ascendant_talent': ascendant_talent_raw
+                    'uid': uid,
+                    'id': digimon_id,
+                    'name': name,
+                    'level': level,
+                    'exp': current_exp,
+                    'loc': "FAZENDA",
+                    'slot': i,
+                    'protected': protected,
+                    'talent': talent_for_dict,
+                    'ascendant_talent': ascendant_talent_raw,
+                    'elo': elo
                 }
 
                 if talent_raw >= 1000:
@@ -2424,11 +2438,23 @@ class DigimonMonitorApp:
                 current_exp = struct.unpack_from("<I", data, name_offset + 0x64)[0]
                 ascendant_talent_raw = struct.unpack_from("<I", data, name_offset + 0xFC)[0]
                 talent_raw = struct.unpack_from("<I", data, name_offset + 0x100)[0]
+                elo_raw = struct.unpack_from("<f", data, name_offset + 0x13C)[0]
+                elo = int(elo_raw / 100)
                 protected = self.read_digimon_protected(data, name_offset)
                 talent_for_dict = min(talent_raw // 1000, 99) if talent_raw >= 1000 else 1
 
                 active_digimons[(loc, i)] = {
-                    'uid': uid, 'id': digimon_id, 'name': name, 'level': level, 'exp': current_exp, 'loc': loc, 'slot': i, 'protected': protected, 'talent': talent_for_dict, 'ascendant_talent': ascendant_talent_raw
+                    'uid': uid,
+                    'id': digimon_id,
+                    'name': name,
+                    'level': level,
+                    'exp': current_exp,
+                    'loc': loc,
+                    'slot': i,
+                    'protected': protected,
+                    'talent': talent_for_dict,
+                    'ascendant_talent': ascendant_talent_raw,
+                    'elo': elo
                 }
 
                 if talent_raw >= 1000:
