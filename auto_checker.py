@@ -995,34 +995,52 @@ class DigimonMonitorApp:
                 if not row_updates:
                     main_status = 'no_match'
                 else:
+                    # OTIMIZAÇÃO ANTERIOR (removida): lia o bloco inteiro
+                    # (1ª à última linha protegida), alterava em memória só
+                    # as linhas dos protegidos e escrevia o bloco inteiro de
+                    # volta. Rápido, mas ARRISCADO com filtro ativo na
+                    # planilha: esse bloco cobre também linhas de Digimons
+                    # NÃO protegidos entre um protegido e outro, e ranges do
+                    # Excel que cruzam linhas ocultas por filtro podem se
+                    # comportar de forma inconsistente ao ler/escrever esse
+                    # tipo de bloco "misto" - o que podia acabar gravando
+                    # valor errado em linha errada bem no meio do bloco.
+                    #
+                    # CORREÇÃO: nunca lemos valor nenhum de volta. Só
+                    # escrevemos, linha por linha protegida, os valores que
+                    # JÁ sabemos que são os certos (vieram do save, não da
+                    # planilha). Isso é 100% imune a filtro, porque cada
+                    # escrita mira exatamente a linha certa (endereço
+                    # absoluto, vindo do name_to_row lido agora mesmo) e
+                    # nunca depende do que está nas linhas vizinhas.
+                    #
+                    # Ainda assim continua rápido: agrupamos linhas
+                    # protegidas CONSECUTIVAS num único range de escrita
+                    # (Talento + Level + Elo juntos), em vez de 1 chamada
+                    # COM por Digimon.
                     rows_sorted = sorted(row_updates.keys())
-                    first_row, last_row_update = rows_sorted[0], rows_sorted[-1]
 
-                    # OTIMIZAÇÃO: em vez de checar se as linhas são
-                    # contíguas e cair pra 1-chamada-por-linha quando não
-                    # são (o caso comum, já que protegidos ficam espalhados
-                    # entre não-protegidos na lista), sempre fazemos:
-                    #   1) 1 leitura do bloco inteiro (primeira à última
-                    #      linha protegida, colunas Ascendant+Level)
-                    #   2) sobrescreve em memória só as linhas dos
-                    #      protegidos (as demais mantêm o valor lido)
-                    #   3) 1 escrita do bloco inteiro de volta
-                    # Total: sempre 2 chamadas COM, não importa quão
-                    # espalhadas as linhas estejam.
-                    block_range = sheet.range(
-                        (first_row, EXCEL_COL_ASCENDANT),
-                        (last_row_update, EXCEL_COL_ELO)
-                    )
-                    current_block = block_range.value
-                    if not isinstance(current_block, list):
-                        current_block = [[current_block]]
-                    elif current_block and not isinstance(current_block[0], list):
-                        current_block = [current_block]
+                    block_start = rows_sorted[0]
+                    block_values = [row_updates[rows_sorted[0]]]
+                    prev_row = rows_sorted[0]
 
-                    for row, values in row_updates.items():
-                        current_block[row - first_row] = values
+                    def _flush_block(start_row, values_list):
+                        end_row = start_row + len(values_list) - 1
+                        sheet.range(
+                            (start_row, EXCEL_COL_ASCENDANT),
+                            (end_row, EXCEL_COL_ELO)
+                        ).value = values_list
 
-                    block_range.value = current_block
+                    for row in rows_sorted[1:]:
+                        if row == prev_row + 1:
+                            block_values.append(row_updates[row])
+                        else:
+                            _flush_block(block_start, block_values)
+                            block_start = row
+                            block_values = [row_updates[row]]
+                        prev_row = row
+                    _flush_block(block_start, block_values)
+
                     main_count = len(row_updates)
 
             return {'status': main_status, 'count': main_count, 'error': None}
