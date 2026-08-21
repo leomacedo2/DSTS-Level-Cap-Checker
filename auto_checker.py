@@ -66,7 +66,7 @@ DIGIMON_SIZE = 336
 # INTEGRAÇÃO COM EXCEL (xlwings)
 # ==========================================
 EXCEL_SYNC_ENABLED = False
-COMPARADOR_SYNC = False  # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
+COMPARADOR_SYNC = False   # Se True, mostra o botão "📊 Sync Comparator" (aba "Comparações_Talento"). Se False, o botão nem aparece.
 AUTO_SYNC_TALENTOS_VISIBLE = False  # Se False, esconde o auto-sync e impede qualquer sync automatico com Excel.
 AUTO_SYNC_TALENTOS_DEFAULT = False # Valor inicial quando ainda nao existe preferencia salva no config.json.
 
@@ -959,18 +959,31 @@ class DigimonMonitorApp:
         um dict de resultado; quem atualiza a tela é o handler do botão
         (on_sync_talentos_click), via self.root.after(...).
 
-        Performático porque:
+        CORREÇÃO ANTES DE PERFORMANCE: escreve V/W/X de cada Digimon
+        protegido individualmente, uma linha por vez, sempre - nunca agrupa
+        várias linhas numa escrita só. Uma tentativa anterior de agrupar
+        linhas numericamente vizinhas (detectando "bloco visível" via
+        EntireRow.Hidden) se mostrou não confiável especificamente com
+        filtro de cor/preenchimento (xlFilterCellColor, xlFilterNoFill) -
+        podia vazar dado de um Digimon pro vizinho. Escrita individual é a
+        única forma confirmada 100% correta em todos os filtros testados
+        (inclusive linhas ocultas), então é isso que ficou.
+
+        Ainda assim continua rápido porque:
         - Só roda quando o usuário pede (não mais a cada leitura de save,
           que era o gargalo antes).
-        - Lê a Coluna F inteira de uma vez (1 chamada COM) e monta um dict
-          nome -> linha em memória, em vez de buscar célula por célula.
-        - Escreve em lote (um único range 2D), em vez de 1 write por Digimon.
+        - Lê Coluna F até H inteiras de uma vez (1 chamada COM) e monta um
+          dict nome -> linha em memória, em vez de buscar célula por célula.
         - Desliga screen_updating/cálculo/eventos automáticos durante a
           escrita e restaura no final, mesmo se der erro.
         - Mira sempre a aba EXCEL_SHEET_NAME (nome fixo), não a aba que
           estiver visível/ativa no Excel no momento do clique.
+        - Trava de coordenação com o VBA (EXCEL_VBA_LOCK_SHEET/CELL): pula
+          o ciclo inteiro (sem ler nem escrever nada) se o VBA estiver no
+          meio de um Sort/Filter agora, evitando ler/escrever com a ordem
+          das linhas mudando por baixo dos pés.
 
-        Retorna: {'status': 'disabled'|'no_lib'|'no_protected'|'no_match'|'ok'|'error',
+        Retorna: {'status': 'disabled'|'no_lib'|'no_protected'|'no_match'|'excel_busy'|'ok'|'error',
                   'count': int, 'error': str|None}
         """
         if not EXCEL_SYNC_ENABLED:
@@ -1081,46 +1094,38 @@ class DigimonMonitorApp:
 
                     rows_sorted = sorted(row_updates.keys())
 
-                    # 1. Agrupa os Digimons protegidos em blocos puramente numéricos
-                    # (Tudo feito na memória do Python. ZERO chamadas COM).
-                    blocks = []
-                    current_block = [rows_sorted[0]]
-                    for row in rows_sorted[1:]:
-                        if row == current_block[-1] + 1:
-                            current_block.append(row)
-                        else:
-                            blocks.append(current_block)
-                            current_block = [row]
-                    blocks.append(current_block)
-
-                    # 2. Processa os blocos de forma cirúrgica
-                    for block in blocks:
-                        start_r = block[0]
-                        end_r = block[-1]
-
-                        if len(block) == 1:
-                            # Bloco de 1 linha: não sofre do bug de deslocamento do filtro.
-                            # Escrevemos a linha diretamente, mesmo que esteja oculta.
-                            sheet.range((start_r, EXCEL_COL_ASCENDANT), (start_r, EXCEL_COL_ELO)).value = row_updates[start_r]
-                        else:
-                            # Bloco > 1 linha. Consultamos o Excel sobre a visibilidade de TODO O BLOCO
-                            # de uma única vez (Economiza até dezenas de chamadas COM).
-                            try:
-                                is_hidden = sheet.range((start_r, EXCEL_COL_NAME), (end_r, EXCEL_COL_NAME)).api.EntireRow.Hidden
-                            except Exception:
-                                is_hidden = None  # Se a API COM falhar, assumimos estado misto por segurança
-                            
-                            # Se is_hidden for False (e não None), significa que 100% do bloco é visível.
-                            if is_hidden == False:
-                                # Sem linhas ocultas no meio: o lote é 100% imune ao bug de deslocamento!
-                                values_list = [row_updates[r] for r in block]
-                                sheet.range((start_r, EXCEL_COL_ASCENDANT), (end_r, EXCEL_COL_ELO)).value = values_list
-                            else:
-                                # Se for True (todas ocultas) ou None (mistas), escrever em lote aqui 
-                                # deslocaria os Digimons e causaria "vazamento".
-                                # Degrada graciosamente e escreve 1 a 1 APENAS para este bloco perigoso.
-                                for r in block:
-                                    sheet.range((r, EXCEL_COL_ASCENDANT), (r, EXCEL_COL_ELO)).value = row_updates[r]
+                    # SEM AGRUPAMENTO EM BLOCO, DE PROPÓSITO.
+                    #
+                    # Tentamos otimizar isso antes: juntar linhas
+                    # NUMERICAMENTE consecutivas numa escrita só, checando
+                    # antes se o bloco inteiro estava "visível" via
+                    # EntireRow.Hidden, pra evitar escrever num range que
+                    # atravessa linha oculta (que pode fazer o Excel
+                    # deslocar os valores pra linha errada).
+                    #
+                    # Só que essa checagem de visibilidade se mostrou NÃO
+                    # confiável especificamente com filtro de COR/PREENCHIMENTO
+                    # (xlFilterCellColor, xlFilterNoFill) - ela às vezes
+                    # dizia "bloco 100% visível" quando não era, causando
+                    # exatamente o vazamento de dado entre Digimons vizinhos
+                    # que a gente queria evitar.
+                    #
+                    # Já os blocos de 1 linha (escrita individual) nunca
+                    # apresentaram esse problema, em nenhum filtro testado -
+                    # uma escrita de 1 linha não tem "vizinho" pra vazar.
+                    #
+                    # Então: cada Digimon protegido agora recebe sua própria
+                    # escrita, sempre, sem exceção, não importa o filtro.
+                    # É mais lento (1 chamada COM por Digimon protegido em
+                    # vez de agrupar), mas com no máximo ~500 linhas na
+                    # planilha e normalmente poucas dezenas de protegidos,
+                    # isso continua rápido - e, principalmente, é a única
+                    # forma que se mostrou 100% correta em todos os filtros.
+                    for row in rows_sorted:
+                        sheet.range(
+                            (row, EXCEL_COL_ASCENDANT),
+                            (row, EXCEL_COL_ELO)
+                        ).value = row_updates[row]
 
                     main_count = len(row_updates)
             return {'status': main_status, 'count': main_count, 'error': None}
