@@ -96,6 +96,29 @@ EXCEL_COL_LEVEL = 23         # Coluna W (level)
 EXCEL_COL_ELO = 24           # Coluna X (EloS)
 EXCEL_HEADER_ROW = 1         # Primeira linha considerada dado (pule se tiver cabeçalho maior)
 
+# TRAVA DE COORDENAÇÃO COM O VBA: célula que o VBA marca com 1 logo antes de
+# fazer Sort/Filter, e volta pra 0 quando termina. O Python checa essa
+# célula antes de ler E antes de escrever - se estiver ocupada, pula esse
+# ciclo de sync inteiro (sem ler nem escrever nada) e deixa o PRÓXIMO
+# auto-sync tentar de novo em alguns segundos, já com o VBA terminado.
+# Isso existe porque Python e VBA rodam em processos separados sem nenhuma
+# sincronização: sem essa trava, o Python pode ler a Coluna F ANTES de um
+# .Sort do VBA terminar de reordenar as linhas, e escrever DEPOIS - fazendo
+# o dado de um Digimon ir pra linha de outro.
+EXCEL_VBA_LOCK_SHEET = "SysBackup"
+EXCEL_VBA_LOCK_CELL = "A1"
+
+# CACHE do mapeamento "nome -> linha" da Coluna F. Cada auto-sync (disparado
+# a cada save, ou seja, com bastante frequência durante gameplay real) lia a
+# Coluna F inteira de novo, mesmo quando ela não mudou desde o sync anterior.
+# Com isso ligado, a leitura só é refeita quando o TAMANHO da planilha muda
+# (linha adicionada/removida) - detectável em 1 chamada barata (used_range),
+# sem precisar reler a coluna toda. RISCO: se você renomear/reordenar nomes
+# na Coluna F SEM adicionar/remover linha nenhuma, o cache não percebe (caso
+# raro, mas existe) - o valor só ficaria errado até a próxima vez que o
+# número de linhas mudar. Desligue se preferir sempre reler do zero.
+EXCEL_CACHE_NAME_TO_ROW = True
+
 # Aba auxiliar que guarda o histórico de talento ascendente ao longo do tempo,
 # pra ajudar a entender como esse status se comporta.
 EXCEL_COMPARISON_SHEET_NAME = "Comparações_Talento"
@@ -164,6 +187,7 @@ I18N = {
         "msg_sync_excel_ok": "✅ Excel updated: ",
         "msg_sync_excel_none": "ℹ️ No protected Digimon matched in the spreadsheet.",
         "msg_sync_excel_disabled": "⚠️ Excel sync is disabled (EXCEL_SYNC_ENABLED = False).",
+        "msg_excel_busy": "⏳ Excel is mid-sort/filter (VBA) - skipped this cycle, will retry next sync.",
         "msg_sync_excel_no_data": "⚠️ No save data loaded yet. Read a save first.",
         "msg_hotkey_registered": "⌨️ Global hotkey active: {key} (works in background).",
         "msg_hotkey_failed": "⚠️ Failed to register global hotkey ({key}): ",
@@ -275,6 +299,7 @@ I18N = {
         "msg_sync_excel_ok": "✅ Excel atualizado: ",
         "msg_sync_excel_none": "ℹ️ Nenhum Digimon protegido encontrado na planilha.",
         "msg_sync_excel_disabled": "⚠️ Sync com Excel está desativado (EXCEL_SYNC_ENABLED = False).",
+        "msg_excel_busy": "⏳ Excel está no meio de um Sort/Filtro (VBA) - ciclo pulado, tenta de novo no próximo sync.",
         "msg_sync_excel_no_data": "⚠️ Nenhum save carregado ainda. Leia um save primeiro.",
         "msg_hotkey_registered": "⌨️ Atalho global ativo: {key} (funciona em segundo plano).",
         "msg_hotkey_failed": "⚠️ Falha ao registrar o atalho global ({key}): ",
@@ -388,6 +413,8 @@ class DigimonMonitorApp:
         self.is_paused = False
         self.last_mtime = 0
         self._pending_save_check = None  # (filepath, mtime, size) aguardando confirmação de "arquivo parou de mudar"
+        self._name_to_row_cache = None       # {} nome_upper -> linha, cache entre auto-syncs
+        self._name_to_row_cache_signature = None  # (aba, last_row) - se mudar, cache é invalidado
         self.blink_state = False
         self.auto_sync_talentos_enabled = (
             AUTO_SYNC_TALENTOS_VISIBLE
@@ -901,6 +928,21 @@ class DigimonMonitorApp:
 
         return app, book
 
+    def _is_excel_locked_by_vba(self, book):
+        """
+        Checa a célula de trava (EXCEL_VBA_LOCK_SHEET!EXCEL_VBA_LOCK_CELL)
+        que o VBA marca com 1 durante um Sort/Filter. Fail-open: se a
+        checagem falhar por qualquer motivo (aba/célula não existe, etc.),
+        assume que NÃO está travado - preserva o comportamento de antes
+        dessa trava existir, em vez de travar o sync inteiro por causa de
+        uma referência que não deu certo.
+        """
+        try:
+            lock_val = book.sheets[EXCEL_VBA_LOCK_SHEET].range(EXCEL_VBA_LOCK_CELL).value
+            return bool(lock_val) and lock_val != 0
+        except Exception:
+            return False
+
     def sync_protected_talents_to_excel(self, active_digimons):
         """
         Sincroniza o ascendant_talent_raw e o level dos Digimons protegidos com a
@@ -947,6 +989,13 @@ class DigimonMonitorApp:
 
         try:
             app, book = self._connect_to_excel_app_and_book()
+
+            # 1ª checagem da trava: se o VBA está no meio de um Sort/Filter
+            # AGORA, nem começamos a ler - evita pegar a Coluna F no meio
+            # de uma reordenação (que geraria um name_to_row já errado).
+            if self._is_excel_locked_by_vba(book):
+                return {'status': 'excel_busy', 'count': 0, 'error': None}
+
             sheet = book.sheets[EXCEL_SHEET_NAME] if EXCEL_SHEET_NAME else book.sheets.active
 
             prev_screen_updating = app.screen_updating
@@ -968,81 +1017,112 @@ class DigimonMonitorApp:
             if last_row < EXCEL_HEADER_ROW:
                 main_status = 'no_match'
             else:
-                col_values = sheet.range(
+                # [CACHE DE LINHAS REMOVIDO]
+                # A leitura do Range F até H é feita ao vivo. Isso impede o bug de
+                # deslocamento caso o usuário ordene/filtre a planilha no Excel, 
+                # pois sempre pegamos a linha real atualizada (1 única chamada COM).
+                
+                # Lê da Coluna F (6) até a Coluna H (8) em uma matriz 2D
+                range_values = sheet.range(
                     (EXCEL_HEADER_ROW, EXCEL_COL_NAME),
-                    (last_row, EXCEL_COL_NAME)
+                    (last_row, 8) 
                 ).value
-                if not isinstance(col_values, list):
-                    col_values = [col_values]
+                
+                if not isinstance(range_values, list):
+                    range_values = [range_values]
+                # Garante que seja 2D mesmo se a planilha tiver só 1 linha de dados
+                if len(range_values) > 0 and not isinstance(range_values[0], list):
+                    range_values = [range_values]
 
                 name_to_row = {}
-                for idx, val in enumerate(col_values):
-                    if val:
-                        name_to_row[str(val).strip().upper()] = EXCEL_HEADER_ROW + idx
+                row_h_status = {}
+                
+                for idx, row_data in enumerate(range_values):
+                    # row_data[0] é a Col. F (Nome), row_data[1] é G, row_data[2] é H (Status)
+                    if row_data and row_data[0]:
+                        name_key = str(row_data[0]).strip().upper()
+                        r_num = EXCEL_HEADER_ROW + idx
+                        name_to_row[name_key] = r_num
+                        
+                        # Extrai a Coluna H com segurança
+                        h_val = str(row_data[2]).strip() if len(row_data) > 2 and row_data[2] is not None else ""
+                        row_h_status[r_num] = h_val
 
-                # Armazena tanto o talento quanto o level para cada linha correspondente
+                # Monta a atualização das linhas aplicando a regra de negócio
                 row_updates = {}
                 for dig in protegidos:
                     name_key = str(dig.get('name', '')).strip().upper()
                     row = name_to_row.get(name_key)
+                    
                     if row:
-                        row_updates[row] = [
-                            dig.get('ascendant_talent'),
-                            dig.get('level'),
-                            dig.get('elo')
-                        ]
+                        if row_h_status.get(row) == "-":
+                            # Regra: Se a Coluna H tem hífen, força a limpeza das colunas V, W, X
+                            row_updates[row] = ["", "", ""]
+                        else:
+                            # Caso normal: preenche os stats reais do Digimon
+                            row_updates[row] = [
+                                dig.get('ascendant_talent'),
+                                dig.get('level'),
+                                dig.get('elo')
+                            ]
 
                 if not row_updates:
                     main_status = 'no_match'
                 else:
-                    # OTIMIZAÇÃO ANTERIOR (removida): lia o bloco inteiro
-                    # (1ª à última linha protegida), alterava em memória só
-                    # as linhas dos protegidos e escrevia o bloco inteiro de
-                    # volta. Rápido, mas ARRISCADO com filtro ativo na
-                    # planilha: esse bloco cobre também linhas de Digimons
-                    # NÃO protegidos entre um protegido e outro, e ranges do
-                    # Excel que cruzam linhas ocultas por filtro podem se
-                    # comportar de forma inconsistente ao ler/escrever esse
-                    # tipo de bloco "misto" - o que podia acabar gravando
-                    # valor errado em linha errada bem no meio do bloco.
-                    #
-                    # CORREÇÃO: nunca lemos valor nenhum de volta. Só
-                    # escrevemos, linha por linha protegida, os valores que
-                    # JÁ sabemos que são os certos (vieram do save, não da
-                    # planilha). Isso é 100% imune a filtro, porque cada
-                    # escrita mira exatamente a linha certa (endereço
-                    # absoluto, vindo do name_to_row lido agora mesmo) e
-                    # nunca depende do que está nas linhas vizinhas.
-                    #
-                    # Ainda assim continua rápido: agrupamos linhas
-                    # protegidas CONSECUTIVAS num único range de escrita
-                    # (Talento + Level + Elo juntos), em vez de 1 chamada
-                    # COM por Digimon.
+                    # 2ª checagem da trava: entre a leitura de F:H e este
+                    # ponto, deu tempo de rodar código Python (montar
+                    # row_updates) - se o VBA começou um Sort/Filter nesse
+                    # meio-tempo, o name_to_row que acabamos de montar já
+                    # pode estar desatualizado. Aborta ANTES de escrever
+                    # qualquer coisa (nunca escrevemos nada errado; só
+                    # perdemos esse ciclo, o próximo auto-sync tenta de novo).
+                    if self._is_excel_locked_by_vba(book):
+                        return {'status': 'excel_busy', 'count': 0, 'error': None}
+
                     rows_sorted = sorted(row_updates.keys())
 
-                    block_start = rows_sorted[0]
-                    block_values = [row_updates[rows_sorted[0]]]
-                    prev_row = rows_sorted[0]
-
-                    def _flush_block(start_row, values_list):
-                        end_row = start_row + len(values_list) - 1
-                        sheet.range(
-                            (start_row, EXCEL_COL_ASCENDANT),
-                            (end_row, EXCEL_COL_ELO)
-                        ).value = values_list
-
+                    # 1. Agrupa os Digimons protegidos em blocos puramente numéricos
+                    # (Tudo feito na memória do Python. ZERO chamadas COM).
+                    blocks = []
+                    current_block = [rows_sorted[0]]
                     for row in rows_sorted[1:]:
-                        if row == prev_row + 1:
-                            block_values.append(row_updates[row])
+                        if row == current_block[-1] + 1:
+                            current_block.append(row)
                         else:
-                            _flush_block(block_start, block_values)
-                            block_start = row
-                            block_values = [row_updates[row]]
-                        prev_row = row
-                    _flush_block(block_start, block_values)
+                            blocks.append(current_block)
+                            current_block = [row]
+                    blocks.append(current_block)
+
+                    # 2. Processa os blocos de forma cirúrgica
+                    for block in blocks:
+                        start_r = block[0]
+                        end_r = block[-1]
+
+                        if len(block) == 1:
+                            # Bloco de 1 linha: não sofre do bug de deslocamento do filtro.
+                            # Escrevemos a linha diretamente, mesmo que esteja oculta.
+                            sheet.range((start_r, EXCEL_COL_ASCENDANT), (start_r, EXCEL_COL_ELO)).value = row_updates[start_r]
+                        else:
+                            # Bloco > 1 linha. Consultamos o Excel sobre a visibilidade de TODO O BLOCO
+                            # de uma única vez (Economiza até dezenas de chamadas COM).
+                            try:
+                                is_hidden = sheet.range((start_r, EXCEL_COL_NAME), (end_r, EXCEL_COL_NAME)).api.EntireRow.Hidden
+                            except Exception:
+                                is_hidden = None  # Se a API COM falhar, assumimos estado misto por segurança
+                            
+                            # Se is_hidden for False (e não None), significa que 100% do bloco é visível.
+                            if is_hidden == False:
+                                # Sem linhas ocultas no meio: o lote é 100% imune ao bug de deslocamento!
+                                values_list = [row_updates[r] for r in block]
+                                sheet.range((start_r, EXCEL_COL_ASCENDANT), (end_r, EXCEL_COL_ELO)).value = values_list
+                            else:
+                                # Se for True (todas ocultas) ou None (mistas), escrever em lote aqui 
+                                # deslocaria os Digimons e causaria "vazamento".
+                                # Degrada graciosamente e escreve 1 a 1 APENAS para este bloco perigoso.
+                                for r in block:
+                                    sheet.range((r, EXCEL_COL_ASCENDANT), (r, EXCEL_COL_ELO)).value = row_updates[r]
 
                     main_count = len(row_updates)
-
             return {'status': main_status, 'count': main_count, 'error': None}
 
         except Exception as e:
@@ -1629,6 +1709,10 @@ class DigimonMonitorApp:
             label_msg, label_color = msg, FG_COLOR
         elif status in ('no_protected', 'no_match'):
             msg = t['msg_sync_excel_none']
+            self.log(f" {msg}", "status")
+            label_msg, label_color = msg, FG_ALMOST
+        elif status == 'excel_busy':
+            msg = t['msg_excel_busy']
             self.log(f" {msg}", "status")
             label_msg, label_color = msg, FG_ALMOST
         elif status == 'disabled':
