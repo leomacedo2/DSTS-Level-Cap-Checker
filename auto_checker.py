@@ -138,9 +138,9 @@ EXCEL_CACHE_NAME_TO_ROW = True
 EXCEL_COMPARISON_SHEET_NAME = "Comparações_Talento"
 MAX_COMPARACOES = 4          # Total de comparações na tabela de comparações de talento
 
-# ==========================================
+# =========================================
 # ATALHO GLOBAL DE TECLADO (opcional)
-# ==========================================
+# =========================================
 # Dispara o botão azul "🔄 Sync Main Sheet" com uma tecla, mesmo com o
 # programa em segundo plano/minimizado (não precisa a janela estar em foco).
 # Isso usa a lib "keyboard" (hook de teclado em baixo nível do Windows), que
