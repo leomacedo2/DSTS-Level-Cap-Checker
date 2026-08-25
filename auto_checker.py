@@ -138,9 +138,9 @@ EXCEL_CACHE_NAME_TO_ROW = True
 EXCEL_COMPARISON_SHEET_NAME = "Comparações_Talento"
 MAX_COMPARACOES = 4          # Total de comparações na tabela de comparações de talento
 
-# =========================================
+# ==========================================
 # ATALHO GLOBAL DE TECLADO (opcional)
-# =========================================
+# ==========================================
 # Dispara o botão azul "🔄 Sync Main Sheet" com uma tecla, mesmo com o
 # programa em segundo plano/minimizado (não precisa a janela estar em foco).
 # Isso usa a lib "keyboard" (hook de teclado em baixo nível do Windows), que
@@ -2974,106 +2974,102 @@ class DigimonMonitorApp:
             render_header_with_controls(txt_quase, "header_yellow", 'show_almost', 'btn_show_almost', 'almost', is_first, is_last)
 
             if getattr(self, 'show_almost', False):
-                search_row = tk.Frame(self.text_area, bg=BG_COLOR)
-                lbl_search = tk.Label(search_row, text=t["lbl_quase_search"], bg=BG_COLOR, fg="white", font=("Consolas", 9))
+                # ------------------------------------------------------
+                # PAINEL DE CONTROLES: agrupado num "card" com borda sutil
+                # e sub-grupos com título (LabelFrame), em vez de várias
+                # linhas soltas de botões sem separação visual nenhuma.
+                # ------------------------------------------------------
+                CARD_BG = "#191919"
+                CARD_BORDER = "#3A3A3A"
+                GROUP_TITLE_FG = "#9A9A9A"
+
+                card = tk.Frame(self.text_area, bg=CARD_BG, highlightbackground=CARD_BORDER,
+                                 highlightthickness=1, bd=0)
+
+                # --- Linha 1: busca ---
+                search_row = tk.Frame(card, bg=CARD_BG)
+                lbl_search = tk.Label(search_row, text="🔍 " + t["lbl_quase_search"], bg=CARD_BG, fg="white", font=("Consolas", 9))
                 lbl_search.pack(side=tk.LEFT, padx=(0, 6))
 
-                self.entry_quase_search = tk.Entry(search_row, textvariable=self.quase_search_var, width=28,
-                                                    bg="#333333", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
-                self.entry_quase_search.pack(side=tk.LEFT, ipady=2)
+                self.entry_quase_search = tk.Entry(search_row, textvariable=self.quase_search_var, width=30,
+                                                    bg="#2A2A2A", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
+                self.entry_quase_search.pack(side=tk.LEFT, ipady=3)
                 self.entry_quase_search.bind("<KeyRelease>", lambda event: self.on_quase_search_keyrelease(filepath, filename, event))
                 self.entry_quase_search.bind("<Return>", lambda event: self.clear_quase_search(filepath, filename))
+                search_row.pack(fill=tk.X, padx=10, pady=(10, 6), anchor="w")
 
-                controls_frame = tk.Frame(self.text_area, bg=BG_COLOR)
+                # --- Linha 2: quantidade exibida ---
+                controls_frame = tk.Frame(card, bg=CARD_BG)
                 btn_cycle = tk.Button(controls_frame, text=self.get_quase_button_label(t), command=lambda: self.cycle_quase_max_count(filepath, filename),
-                                      bg="#333333", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
+                                      bg="#2A2A2A", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
                 btn_cycle.pack(side=tk.LEFT, padx=(0, 6))
 
-                lbl_until = tk.Label(controls_frame, text=t["lbl_quase_or_show_until"], bg=BG_COLOR, fg="white", font=("Consolas", 9))
+                lbl_until = tk.Label(controls_frame, text=t["lbl_quase_or_show_until"], bg=CARD_BG, fg="white", font=("Consolas", 9))
                 lbl_until.pack(side=tk.LEFT, padx=(0, 4))
 
                 vcmd_quase_limit = (self.root.register(lambda p: p == "" or (p.isdigit() and len(p) <= 4)), '%P')
                 entry_limit = tk.Entry(controls_frame, textvariable=self.quase_limit_entry_var, validate="key", validatecommand=vcmd_quase_limit,
-                                        width=4, bg="#333333", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
+                                        width=4, bg="#2A2A2A", fg="white", font=("Consolas", 9), relief=tk.FLAT, insertbackground="white")
                 entry_limit.pack(side=tk.LEFT, padx=(0, 4), ipady=2)
                 entry_limit.bind("<Return>", lambda event: self.apply_quase_limit_from_entry(filepath, filename, event))
 
                 btn_fetch = tk.Button(controls_frame, text=t["btn_quase_fetch"], command=lambda: self.apply_quase_limit_from_entry(filepath, filename),
-                                      bg="#444444", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
+                                      bg="#333333", fg="white", font=("Consolas", 9, "bold"), relief=tk.FLAT, cursor="hand2", padx=8, pady=2)
                 btn_fetch.pack(side=tk.LEFT)
+                controls_frame.pack(fill=tk.X, padx=10, pady=(0, 8), anchor="w")
 
-                filter_frame = tk.Frame(self.text_area, bg=BG_COLOR)
+                # --- Separador fino entre "busca" e "filtros/ordenação" ---
+                sep1 = tk.Frame(card, bg=CARD_BORDER, height=1)
+                sep1.pack(fill=tk.X, padx=10, pady=(0, 8))
+
+                # --- Linha 3: dois grupos lado a lado - Local e Marcadores ---
+                filters_row = tk.Frame(card, bg=CARD_BG)
+
+                lf_local = tk.LabelFrame(filters_row, text=" 📍 Local ", bg=CARD_BG, fg=GROUP_TITLE_FG,
+                                          font=("Consolas", 8, "bold"), labelanchor="nw", relief=tk.GROOVE, bd=1)
                 for option, label in [("PARTY", t["radio_party"]), ("BOX", t["radio_box"]), ("FAZENDA", t["radio_farm"]), ("TODOS", t["radio_all"])]:
-                    tk.Radiobutton(filter_frame, text=label, value=option, variable=self.quase_filter_loc_var,
-                                   command=lambda: self.apply_quase_filters(filepath, filename), bg=BG_COLOR, fg="white",
-                                   selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9),
-                                   cursor="hand2").pack(side=tk.LEFT, padx=(0, 10))
+                    tk.Radiobutton(lf_local, text=label, value=option, variable=self.quase_filter_loc_var,
+                                   command=lambda: self.apply_quase_filters(filepath, filename), bg=CARD_BG, fg="white",
+                                   selectcolor=BTN_BG, activebackground=CARD_BG, activeforeground="white", font=("Consolas", 9),
+                                   cursor="hand2").pack(side=tk.LEFT, padx=(6, 2), pady=(2, 4))
+                lf_local.pack(side=tk.LEFT, padx=(0, 8), fill=tk.Y)
 
+                lf_flags = tk.LabelFrame(filters_row, text=" 🏷️ Marcadores ", bg=CARD_BG, fg=GROUP_TITLE_FG,
+                                          font=("Consolas", 8, "bold"), labelanchor="nw", relief=tk.GROOVE, bd=1)
                 self.chk_quase_wishlist = tk.Checkbutton(
-                    filter_frame,
-                    text=t["checkbox_wishlist"],
-                    variable=self.quase_filter_wishlist_var,
-                    command=lambda: self.apply_quase_filters(filepath, filename),
-                    bg=BG_COLOR,
-                    fg="white",
-                    selectcolor=BTN_BG,
-                    activebackground=BG_COLOR,
-                    activeforeground="white",
-                    font=("Consolas", 9),
-                    cursor="hand2",
+                    lf_flags, text=t["checkbox_wishlist"], variable=self.quase_filter_wishlist_var,
+                    command=lambda: self.apply_quase_filters(filepath, filename), bg=CARD_BG, fg="white",
+                    selectcolor=BTN_BG, activebackground=CARD_BG, activeforeground="white", font=("Consolas", 9), cursor="hand2",
                 )
-                                
-                self.chk_quase_protected = tk.Checkbutton(
-                    filter_frame,
-                    text=t["checkbox_protected"],
-                    variable=self.quase_filter_protected_var,
-                    command=lambda: self.apply_quase_filters(filepath, filename),
-                    bg=BG_COLOR,
-                    fg="white",
-                    selectcolor=BTN_BG,
-                    activebackground=BG_COLOR,
-                    activeforeground="white",
-                    font=("Consolas", 9),
-                    cursor="hand2",
-                )
-
-                self.chk_quase_wishlist.pack(side=tk.LEFT, padx=(0, 10))
+                self.chk_quase_wishlist.pack(side=tk.LEFT, padx=(6, 4), pady=(2, 4))
                 self.chk_quase_wishlist.bind("<Enter>", lambda event: self._show_quase_wishlist_hint(event, self._quase_wishlist_hint_text))
                 self.chk_quase_wishlist.bind("<Leave>", self._hide_quase_wishlist_hint)
-                self.chk_quase_protected.pack(side=tk.LEFT, padx=(0, 10))
 
-                # ========================================================
-                # RADIOBUTTONS (OptionMenu) DE ORDENAÇÃO NA MESMA LINHA
-                # ========================================================
-                sort_frame = tk.Frame(self.text_area, bg=BG_COLOR)
-                # self.quase_sort_var = tk.StringVar(value=getattr(self, 'quase_sort_by', 'XP'))
+                self.chk_quase_protected = tk.Checkbutton(
+                    lf_flags, text=t["checkbox_protected"], variable=self.quase_filter_protected_var,
+                    command=lambda: self.apply_quase_filters(filepath, filename), bg=CARD_BG, fg="white",
+                    selectcolor=BTN_BG, activebackground=CARD_BG, activeforeground="white", font=("Consolas", 9), cursor="hand2",
+                )
+                self.chk_quase_protected.pack(side=tk.LEFT, padx=(4, 6), pady=(2, 4))
+                lf_flags.pack(side=tk.LEFT, fill=tk.Y)
 
-                # def apply_sort():
-                #     self.quase_sort_by = self.quase_sort_var.get()
-                #     self.save_config()
-                #     self.process_save(filepath, filename)
+                filters_row.pack(fill=tk.X, padx=10, pady=(0, 8), anchor="w")
 
-                # tk.Radiobutton(sort_frame, text=t.get("radio_sort_xp", "Menor XP Restante"), variable=self.quase_sort_var, value="XP",
-                #                command=apply_sort, bg=BG_COLOR, fg="white", selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9), cursor="hand2").pack(side=tk.LEFT, padx=(0, 10))
-                # tk.Radiobutton(sort_frame, text=t.get("radio_sort_acc", "Menor Talento ACC"), variable=self.quase_sort_var, value="ACC",
-                #                command=apply_sort, bg=BG_COLOR, fg="white", selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground="white", font=("Consolas", 9), cursor="hand2").pack(side=tk.LEFT)
-
-                # ========================================================
-                # PRIORIDADE DE ORDENAÇÃO ESTILO EXCEL (clicar promove a
-                # critério #1; os outros viram desempate, na ordem que
-                # foram escolhidos por último - igual "Adicionar Nível" no
-                # diálogo de ordenação do Excel).
-                # ========================================================
-                lbl_sort = tk.Label(sort_frame, text=t.get("lbl_sort_priority", "Ordenar:"), bg=BG_COLOR, fg="white", font=("Consolas", 9))
-                lbl_sort.pack(side=tk.LEFT, padx=(5, 4))
-                lbl_sort.bind("<Enter>", lambda e: self._show_hint(e, t.get("hint_sort_priority", "")))
-                lbl_sort.bind("<Leave>", self._hide_hint)
+                # --- Linha 4: prioridade de ordenação, estilo Excel ---
+                # Clicar promove o critério a #1 (selo ①); os outros viram
+                # desempate na ordem escolhida por último (selos ②③).
+                lf_sort = tk.LabelFrame(card, text=" 🔀 " + t.get("lbl_sort_priority", "Ordenar") + " ", bg=CARD_BG,
+                                         fg=GROUP_TITLE_FG, font=("Consolas", 8, "bold"), labelanchor="nw",
+                                         relief=tk.GROOVE, bd=1)
+                lf_sort.bind("<Enter>", lambda e: self._show_hint(e, t.get("hint_sort_priority", "")))
+                lf_sort.bind("<Leave>", self._hide_hint)
 
                 sort_labels = {
                     "XP": t.get("radio_sort_xp", "Menor XP Restante"),
                     "ACC": t.get("radio_sort_acc", "Menor Talento ACC"),
                     "ELO": t.get("radio_sort_elo", "Menor Elo"),
                 }
+                RANK_BADGE = {1: "①", 2: "②", 3: "③"}
 
                 def _promote_sort_key(key):
                     priority = list(getattr(self, 'quase_sort_priority', ["XP", "ACC", "ELO"]))
@@ -3085,26 +3081,23 @@ class DigimonMonitorApp:
                     self.process_save(filepath, filename)
 
                 for key in ["XP", "ACC", "ELO"]:
-                    rank = self.quase_sort_priority.index(key) + 1 if key in self.quase_sort_priority else "-"
+                    rank = self.quase_sort_priority.index(key) + 1 if key in self.quase_sort_priority else 0
+                    badge = RANK_BADGE.get(rank, "•")
+                    is_primary = (rank == 1)
                     btn_sort = tk.Button(
-                        sort_frame, text=f"{rank}º {sort_labels[key]}", command=lambda k=key: _promote_sort_key(k),
-                        bg=("#1F6FEB" if rank == 1 else "#333333"), fg="white", font=("Consolas", 8),
-                        relief=tk.FLAT, cursor="hand2", padx=4, pady=1
+                        lf_sort, text=f"{badge} {sort_labels[key]}", command=lambda k=key: _promote_sort_key(k),
+                        bg=("#1F6FEB" if is_primary else "#2A2A2A"), fg="white",
+                        font=("Consolas", 9, "bold" if is_primary else "normal"),
+                        relief=tk.FLAT, cursor="hand2", padx=6, pady=3
                     )
-                    btn_sort.pack(side=tk.LEFT, padx=(0, 4))
-                # ========================================================
-                
+                    btn_sort.pack(side=tk.LEFT, padx=(6 if key == "XP" else 3, 3), pady=(2, 4))
+                lf_sort.pack(fill=tk.X, padx=10, pady=(0, 10), anchor="w")
+
                 self.text_area.config(state=tk.NORMAL)
-                self.text_area.window_create(tk.END, window=search_row)
-                self.text_area.insert(tk.END, "\n")
-                self.text_area.window_create(tk.END, window=controls_frame)
-                self.text_area.insert(tk.END, "\n")
-                self.text_area.window_create(tk.END, window=filter_frame)
-                self.text_area.insert(tk.END, "\n")
-                self.text_area.window_create(tk.END, window=sort_frame)
-                self.text_area.insert(tk.END, "\n")
-                self.text_area.insert(tk.END, "\n")
+                self.text_area.window_create(tk.END, window=card)
+                self.text_area.insert(tk.END, "\n\n")
                 self.text_area.config(state=tk.DISABLED)
+
 
                 combined_entries = []
                 for item in almost_list + remaining_list:
