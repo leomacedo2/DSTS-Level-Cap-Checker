@@ -3428,7 +3428,7 @@ class DigimonMonitorApp:
                         self.maybe_auto_sync_talentos(filename_only, current_mtime)
                     else:
                         # 1ª vez vendo essa mudança (ou o arquivo ainda está
-                        # mudando) - só guarda e confirma no próximo ciclo.
+                        # mudando) - só guarda e confirma no próximo ciclo
                         self._pending_save_check = candidate
             except Exception:
                 pass 
